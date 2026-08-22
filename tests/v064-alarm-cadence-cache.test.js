@@ -9,7 +9,7 @@ test('1/2/3/5 minute rules use the scheduled cycle anchor, not query completion'
 });
 
 test('manual force-all ignores due time and background-off only gates automatic wakes', () => {
-  const monitor = monitorWith(storage()); const rules = [model.rule({ id: 'one', thresholdPct: 90, checkIntervalMinutes: 1 }), model.rule({ id: 'five', thresholdPct: 90, checkIntervalMinutes: 5 })]; assert.deepEqual(monitor.dueRules(rules, { one: Date.now(), five: Date.now() }, { forceAll: true }, Date.now()).map(rule => rule.id), ['one', 'five']); const source = fs.readFileSync(path.join(root, 'background', 'alarm-monitor.js'), 'utf8'); const worker = fs.readFileSync(path.join(root, 'background', 'service-worker.js'), 'utf8'); assert.match(source, /trigger === 'alarm-background' && !settings\.backgroundMonitoringEnabled/); assert.match(worker, /run\('alarm-manual', \{ forceAll: true \}\)/);
+  const monitor = monitorWith(storage()); const rules = [model.rule({ id: 'one', thresholdPct: 90, checkIntervalMinutes: 1 }), model.rule({ id: 'five', thresholdPct: 90, checkIntervalMinutes: 5 })]; assert.deepEqual(monitor.dueRules(rules, { one: Date.now(), five: Date.now() }, { forceAll: true }, Date.now()).map(rule => rule.id), ['one', 'five']); const source = fs.readFileSync(path.join(root, 'background', 'alarm-monitor.js'), 'utf8'); const worker = fs.readFileSync(path.join(root, 'background', 'service-worker.js'), 'utf8'); assert.match(source, /trigger === 'alarm-background' && !settings\.backgroundMonitoringEnabled/); assert.match(worker, /run\('alarm-manual', \{ forceAll: true, forceFresh: true \}\)/);
 });
 
 test('lease owner prevents an old cycle from releasing a newer lease', async () => {

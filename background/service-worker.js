@@ -23,7 +23,7 @@ async function alarmMessage(message) {
   if (message.type === 'ALARM_CLEAR_EVENTS') { await chrome.storage.local.set({ [keys.events]: [] }); return alarmState(); }
   if (message.type === 'ALARM_CLEAR_CYCLES') { await chrome.storage.local.set({ [keys.cycles]: [] }); return alarmState(); }
   if (message.type === 'ALARM_ACK' || message.type === 'ALARM_SNOOZE') { const old = await chrome.storage.local.get(keys.runtime); const runtime = old[keys.runtime] || {}; const entry = runtime[String(payload.key)]; if (!entry) return { ok: false, error: 'Alarm bulunamadi.' }; if (message.type === 'ALARM_ACK') entry.acknowledgedAt = Date.now(); else { const until = Date.now() + Math.max(1, Number(payload.minutes || 15)) * 60000; entry.snoozedUntil = until; entry.snoozeReminderAt = until; } runtime[String(payload.key)] = entry; await chrome.storage.local.set({ [keys.runtime]: runtime }); return alarmState(); }
-  if (message.type === 'ALARM_RUN_NOW') return WebSCADAAlarmMonitor.run('alarm-manual', { forceAll: true });
+  if (message.type === 'ALARM_RUN_NOW') return WebSCADAAlarmMonitor.run('alarm-manual', { forceAll: true, forceFresh: true });
   if (message.type === 'ALARM_TEST_NOTIFICATION') return WebSCADAAlarmNotifications.notify('webscada-alarm:test', { title: 'WebSCADA - Test bildirimi', message: 'Bildirim hatti calisiyor.' });
   if (message.type === 'ALARM_TEST_SOUND') return WebSCADAAlarmNotifications.sound(payload.severity === 'critical' ? 'critical' : 'warning');
   if (message.type === 'ALARM_SYNC_CATALOG') return { ok: await WebSCADAAlarmMonitor.syncCatalog(payload.catalog) };

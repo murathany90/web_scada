@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.5
+
+- Separated five-minute live-data acceptance from a 45-second cache network-reuse window and made manual alarm checks force fresh data.
+- Preserved automatic cadence during manual checks, added one controlled latest-row missing-ID recovery, and shortened renewable stale-lease recovery.
+
 ## 0.6.4
 
 - Added 3-minute alarm checks, scheduled-cadence anchoring, force-all manual checks and owner-safe renewable alarm leases.

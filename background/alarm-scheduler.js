@@ -3,17 +3,17 @@ const WebSCADAAlarmScheduler = (() => {
   const PERIOD = 1;
   const reasonableSchedule = alarm => Number.isFinite(Number(alarm?.scheduledTime)) && Number(alarm.scheduledTime) > Date.now() - (PERIOD * 2 * 60000) && Number(alarm.scheduledTime) < Date.now() + (PERIOD * 5 * 60000);
   async function enabled() { const data = await chrome.storage.local.get(['webscadaAlarmSettings', 'webscadaAlarmRules']); return Boolean(data.webscadaAlarmSettings?.backgroundMonitoringEnabled) && (data.webscadaAlarmRules || []).some(rule => rule.enabled); }
-  async function status(alarm) { if (typeof WebSCADAAlarmMonitor === 'undefined') return; await WebSCADAAlarmMonitor.recordWake({ schedulerExists: Boolean(alarm), schedulerPeriodMinutes: Number(alarm?.periodInMinutes || PERIOD), schedulerScheduledTime: alarm?.scheduledTime ? new Date(alarm.scheduledTime).toISOString() : null }); }
+  async function status(alarm) { if (typeof WebSCADAAlarmMonitor === 'undefined' || typeof WebSCADAAlarmMonitor.recordSchedulerInfo !== 'function') return; await WebSCADAAlarmMonitor.recordSchedulerInfo({ schedulerExists: Boolean(alarm), schedulerPeriodMinutes: Number(alarm?.periodInMinutes || PERIOD), schedulerScheduledTime: alarm?.scheduledTime ? new Date(alarm.scheduledTime).toISOString() : null }); }
   async function ensureBackgroundMonitorAlarm() {
     let alarm = await chrome.alarms.get(NAME);
     if (await enabled()) {
-      if (!alarm || Number(alarm.periodInMinutes) !== PERIOD || !reasonableSchedule(alarm)) { if (alarm) await chrome.alarms.clear(NAME); await chrome.alarms.create(NAME, { periodInMinutes: PERIOD }); alarm = await chrome.alarms.get(NAME); }
+      if (!alarm || Number(alarm.periodInMinutes) !== PERIOD || !reasonableSchedule(alarm)) { if (alarm) await chrome.alarms.clear(NAME); await chrome.alarms.create(NAME, { periodInMinutes: PERIOD, persistAcrossSessions: true }); alarm = await chrome.alarms.get(NAME); }
       await status(alarm); return true;
     }
     if (alarm) await chrome.alarms.clear(NAME);
     await status(null); return false;
   }
-  chrome.alarms.onAlarm.addListener(alarm => { if (alarm?.name !== NAME || typeof WebSCADAAlarmMonitor === 'undefined') return; WebSCADAAlarmMonitor.recordWake({ schedulerExists: true, schedulerPeriodMinutes: Number(alarm.periodInMinutes || PERIOD), schedulerScheduledTime: alarm.scheduledTime ? new Date(alarm.scheduledTime).toISOString() : null }).then(() => WebSCADAAlarmMonitor.run('alarm-background')).catch(() => {}); });
+  chrome.alarms.onAlarm.addListener(alarm => { if (alarm?.name !== NAME || typeof WebSCADAAlarmMonitor === 'undefined') return; const wakeAt = Date.now(), scheduled = Number(alarm.scheduledTime || 0); const schedulerDelayMs = Number.isFinite(scheduled) && scheduled > 0 ? Math.max(0, wakeAt - scheduled) : null; WebSCADAAlarmMonitor.recordSchedulerWake({ schedulerExists: true, schedulerPeriodMinutes: Number(alarm.periodInMinutes || PERIOD), schedulerScheduledTime: scheduled ? new Date(scheduled).toISOString() : null, schedulerDelayMs }).then(() => WebSCADAAlarmMonitor.run('alarm-background', { schedulerDelayMs, schedulerScheduledTime: scheduled, schedulerWakeAt: wakeAt })).catch(() => {}); });
   return { NAME, PERIOD, reasonableSchedule, ensureBackgroundMonitorAlarm };
 })();
 if (typeof module === 'object' && module.exports) module.exports = WebSCADAAlarmScheduler;

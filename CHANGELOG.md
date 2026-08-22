@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2
+
+- Prevented stale alarm cycles from committing after a rule or exemption revision, and made filter-group entity type explicit.
+- Added persistent alarm exemptions, seeded once with the three TEMELLİ–BAYMİNA Hat exclusions, plus scheduler/manual diagnostic separation.
+
 ## 0.6.1
 
 - Reconciled deleted, disabled and out-of-scope alarm runtime/check records so ghost alarms cannot remain active.

@@ -22,10 +22,10 @@
     const active = current === 'ACTIVE' || current === 'ACTIVE_DATA_UNAVAILABLE';
     const target = active && value >= clearAt ? 'ACTIVE' : value >= threshold ? 'ACTIVE' : 'NORMAL';
     const changed = target !== current && !(current === 'ACTIVE_DATA_UNAVAILABLE' && target === 'ACTIVE');
-    const due = target === 'ACTIVE' && evaluation.repeatMinutes > 0 && nowMs - Number(previous.lastNotifiedAt || 0) >= evaluation.repeatMinutes * 60000;
+    const due = target === 'ACTIVE' && evaluation.repeatMinutes > 0 && nowMs - Number(previous.lastAlertedAt || previous.lastNotifiedAt || 0) >= evaluation.repeatMinutes * 60000;
     const snoozed = Number(previous.snoozedUntil || 0) > nowMs;
     const notify = target === 'ACTIVE' && !snoozed && !previous.acknowledgedAt && ((current !== 'ACTIVE' && current !== 'ACTIVE_DATA_UNAVAILABLE') || due);
-    return { ...previous, state: target, loadingPct: value, valueTimestamp: evaluation.valueTimestamp || null, updatedAt: new Date(nowMs).toISOString(), changed, notify, clearAt, ...(target === 'NORMAL' ? { acknowledgedAt: null, snoozedUntil: null, lastNotifiedAt: 0 } : {}) };
+    return { ...previous, state: target, loadingPct: value, valueTimestamp: evaluation.valueTimestamp || null, updatedAt: new Date(nowMs).toISOString(), changed, notify, alertDue: notify, clearAt, ...(target === 'NORMAL' ? { acknowledgedAt: null, snoozedUntil: null, lastNotifiedAt: 0, lastAlertedAt: 0 } : {}) };
   }
   return { LIMITS, rule, validate, append, nextState };
 }));

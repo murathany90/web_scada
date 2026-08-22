@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- Reconciled deleted, disabled and out-of-scope alarm runtime/check records so ghost alarms cannot remain active.
+- Added detailed transformer display labels, scheduler self-healing/wake diagnostics, independent sound cadence, repeat events and alarm history cleanup controls.
+
 ## 0.6.0
 
 - Added worker-owned SCADA auto-refresh, persistent settings, alarm diagnostics, severity-aware notifications and packaged WAV alarm choices.

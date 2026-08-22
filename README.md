@@ -2,7 +2,7 @@
 
 **WebSCADA**, TEİAŞ YTBS (Yük Tevzi Bilgi Sistemi) topoloji modeli ile Superset üzerinden alınan SCADA verilerini tek bir Chrome eklentisi içinde **Datalar**, **Sorgular** ve **Harita** çalışma alanlarında birleştiren bağımsız bir Manifest V3 uygulamasıdır.
 
-> Güncel sürüm: **v0.5.0**
+> Güncel sürüm: **v0.5.1**
 > Eklenti tipi: **Chrome Extension / Manifest V3**  
 > Ana dil: **Türkçe**  
 > Çalışma modeli: **Yerel YTBS topolojisi + kurum Superset/SCADA verisi**
@@ -563,7 +563,7 @@ Build çıktısı:
 ```text
 dist/
 ├── chrome-extension/
-└── WebSCADA_0.5.0_YYYYMMDD_HHMMSS.zip
+└── WebSCADA_0.5.1_YYYYMMDD_HHMMSS.zip
 ```
 
 Build sonunda SHA256 hesaplanır.
@@ -1052,6 +1052,11 @@ Kontrol:
 
 # Sürüm geçmişi
 
+## v0.5.1
+
+- Superset sorguları tek coordinator üzerinden önceliklendirilir; alarm sorguları ilk sıradadır.
+- Alarm kuralları 1, 2, 5, 10 veya 15 dakikada bir denetlenebilir; alarm tekrarı ayrı bir ayardır.
+
 ## v0.5.0
 
 - Tek Chrome alarm scheduler'ı, kalıcı alarm kuralları, arka plan yüklenme izleme ve alarm geçmişi eklendi.
@@ -1154,6 +1159,6 @@ node_modules/
 
 # Durum
 
-WebSCADA v0.5.0 bağımsız bir Chrome MV3 extension olarak geliştirilmekte ve parent repository'den ayrılmış yapıdadır.
+WebSCADA v0.5.1 bağımsız bir Chrome MV3 extension olarak geliştirilmekte ve parent repository'den ayrılmış yapıdadır.
 
 Yeni geliştirmelerin bağımsız WebSCADA repository üzerinde sürdürülmesi önerilir.

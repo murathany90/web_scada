@@ -447,7 +447,8 @@ async function scadaDoFetch(options = {}) {
           kvFilters: SCADA_CONFIG.QUERY_KV_FILTERS,
           tearFilters: SCADA_CONFIG.QUERY_TEAR_FILTERS,
           elementNames: scope.elementNames,
-          measurementIds: scope.measurementIds
+          measurementIds: scope.measurementIds,
+          triggerType
         }
       });
 

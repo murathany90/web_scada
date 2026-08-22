@@ -2711,7 +2711,8 @@ try {
               tearFilters: [],
               elementNames: scope.elementNames,
               measurementIds: scope.measurementIds,
-              requestId
+              requestId,
+              triggerType
             }
           });
 

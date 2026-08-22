@@ -1,0 +1,30 @@
+const WebSCADARequestCoordinator = (() => {
+  const MAX_CONCURRENT_SUPERSET = 1;
+  function create() {
+    let running = 0; let sequence = 0; let active = null; let lastWaitMs = 0; let lastDurationMs = 0;
+    const queue = []; const byKey = new Map();
+    const state = () => ({ maxConcurrent: MAX_CONCURRENT_SUPERSET, active: active ? { key: active.key, label: active.label, priority: active.priority, startedAt: active.startedAt } : null, queueCount: queue.length, pending: queue.map(job => ({ label: job.label, priority: job.priority })), lastWaitMs, lastDurationMs });
+    const takeNext = () => queue.sort((a, b) => a.priority - b.priority || a.sequence - b.sequence).shift();
+    function pump() {
+      if (running >= MAX_CONCURRENT_SUPERSET) return;
+      const job = takeNext(); if (!job) return;
+      running += 1; active = { key: job.key, label: job.label, priority: job.priority, startedAt: Date.now() };
+      const started = Date.now(); lastWaitMs = started - job.queuedAt;
+      Promise.resolve().then(job.executor).then(job.resolve, job.reject).finally(() => { lastDurationMs = Date.now() - started; running -= 1; active = null; byKey.delete(job.key); pump(); });
+    }
+    function run(input, executor) {
+      const job = { key: String(input?.key || `job-${sequence}`), coalesceKey: String(input?.coalesceKey || ''), label: String(input?.label || 'Superset sorgusu'), priority: Math.max(1, Number(input?.priority || 4)), executor, queuedAt: Date.now(), sequence: sequence++ };
+      const existing = byKey.get(job.key); if (existing) return existing.promise;
+      const coalesced = job.coalesceKey && queue.find(candidate => candidate.coalesceKey === job.coalesceKey);
+      if (coalesced) { byKey.delete(coalesced.key); coalesced.key = job.key; coalesced.label = job.label; coalesced.priority = job.priority; coalesced.executor = job.executor; byKey.set(coalesced.key, coalesced); return coalesced.promise; }
+      job.promise = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject; }); byKey.set(job.key, job); queue.push(job); pump(); return job.promise;
+    }
+    return { run, state, _reset: () => { queue.splice(0); byKey.clear(); running = 0; active = null; }, _queue: queue };
+  }
+  const instance = create();
+  const stable = (value) => JSON.stringify(value || {}, Object.keys(value || {}).sort());
+  const requestKey = (type, payload = {}) => `${type}:${stable({ ids: [...new Set((payload.measurementIds || []).map(String))].sort(), elements: [...new Set((payload.elementNames || []).map(String))].sort(), mode: payload.queryMode, range: payload.timeRange, start: payload.startTime, end: payload.endTime, grain: payload.timeGrain, at: payload.at, trigger: payload.triggerType || payload.trigger || '' })}`;
+  const priorityFor = (type, payload = {}) => type === 'ALARM_NETWORK_QUERY' ? 1 : (type === 'WEBSCADA_QUERY' || type === 'SCADA_HISTORY_FETCH' || type === 'SCADA_HISTORICAL_SNAPSHOT_FETCH') ? 2 : (payload.triggerType === 'auto' || payload.trigger === 'auto') ? 4 : 3;
+  return { MAX_CONCURRENT_SUPERSET, create, run: instance.run, state: instance.state, requestKey, priorityFor, _reset: instance._reset };
+})();
+if (typeof module === 'object' && module.exports) module.exports = WebSCADARequestCoordinator;

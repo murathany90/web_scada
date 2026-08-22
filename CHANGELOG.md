@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1
+
+- Added one global Superset request coordinator with priority, deduplication and coalesced map auto-refresh jobs.
+- Added per-rule 1/2/5/10/15-minute checks, partial map-snapshot reuse and Hat/Trafo alarm parity corrections.
+- Fixed explicit single/multi Trafo selection and Alarm-to-Map/Query entity type routing.
+
 ## 0.5.0
 
 - Added persistent advisory background loading alarms with one Chrome alarm scheduler, chart-first SCADA queries, hysteresis, ACK/snooze, repeat control, notification rate limiting and offscreen audio.

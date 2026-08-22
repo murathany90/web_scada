@@ -1,0 +1,3 @@
+const test = require('node:test'); const assert = require('node:assert/strict'); const { flowColor, reactiveRatioPct, COLORS } = require('../core/scada-utils.js');
+test('MW colors preserve shared boundaries', () => { [[0,'green'],[55,'green'],[55.1,'yellow'],[65,'yellow'],[65.1,'orange'],[75,'orange'],[75.1,'red'],[80,'red'],[80.1,'darkRed'],[90,'darkRed'],[90.1,'purple'],[120,'purple']].forEach(([pct,key]) => assert.equal(flowColor(pct), COLORS[key])); });
+test('reactive ratio rejects near-zero MW and uses absolute Q', () => { assert.equal(reactiveRatioPct(100, -20), 20); assert.equal(reactiveRatioPct(.5, 20), null); assert.equal(reactiveRatioPct(0, 1), null); });

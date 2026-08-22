@@ -1,0 +1,4 @@
+data/scada_auth.json
+dist/
+build/
+node_modules/

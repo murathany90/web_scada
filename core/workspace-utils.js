@@ -1,0 +1,7 @@
+(function (root, factory) { const api = factory(); if (typeof module === 'object' && module.exports) module.exports = api; root.WebSCADAWorkspaceUtils = api; }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  function pageSlice(rows, page, size) { const total = rows.length; const safeSize = [50,100,250].includes(Number(size)) ? Number(size) : 50; const pages = Math.max(1, Math.ceil(total / safeSize)); const safePage = Math.min(Math.max(1, Number(page) || 1), pages); return { rows: rows.slice((safePage - 1) * safeSize, safePage * safeSize), page: safePage, pages, from: total ? (safePage - 1) * safeSize + 1 : 0, to: Math.min(total, safePage * safeSize), total }; }
+  function autoGrain(start, end) { const hours = Math.max(0, Number(end) - Number(start)) / 3600000; return hours <= 6 ? 'PT1M' : hours <= 24 ? 'PT5M' : hours <= 72 ? 'PT10M' : 'PT15M'; }
+  function estimatePoints(count, start, end, grain) { const minutes = { PT1M: 1, PT5M: 5, PT10M: 10, PT15M: 15, PT30M: 30, PT1H: 60 }[grain] || 5; return Math.ceil(Math.max(0, Number(end) - Number(start)) / 60000 / minutes) * Math.max(1, count); }
+  function guardrail(count, start, end, grain) { const requested = estimatePoints(count, start, end, grain); const conservative = estimatePoints(count, start, end, 'PT1M'); return { ok: count <= 300 && requested <= 100000 && conservative <= 100000, estimated: requested, requestedEstimate: requested, conservativeEstimate: conservative, limit: 100000 }; }
+  return { pageSlice, autoGrain, estimatePoints, guardrail };
+}));

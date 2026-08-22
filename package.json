@@ -1,0 +1,11 @@
+{
+  "name": "webscada-extension",
+  "private": true,
+  "version": "0.2.0",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "build": "powershell -ExecutionPolicy Bypass -File scripts/build-extension.ps1",
+    "build:extension": "npm run build",
+    "test:standalone": "powershell -ExecutionPolicy Bypass -File scripts/test-standalone.ps1"
+  }
+}

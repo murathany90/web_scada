@@ -1,0 +1,8 @@
+﻿{
+  "baseUrl": "https://analytics.teias.gov.tr",
+  "username": "",
+  "password": "",
+  "dashboardId": 89,
+  "chartSliceId": 454,
+  "enabled": false
+}

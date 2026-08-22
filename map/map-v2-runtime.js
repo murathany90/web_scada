@@ -39,8 +39,10 @@
   }
 
   function normalizeTrafoType(value) {
+    const shared = globalThis.WebSCADAYtbsHierarchy?.classifyTrafo({ gerilimTuru: value });
+    if (shared) return shared;
     const text = normalizeText(value);
-    return text.includes('iletim') ? 'transmission' : 'distribution';
+    return text.includes('iletim') ? 'transmission' : text.includes('dagitim') ? 'distribution' : 'unknown';
   }
 
   function getTrafoInstalledPowerValue(trafo) {

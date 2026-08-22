@@ -15,7 +15,7 @@ foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $rootPath $file) -
 foreach ($dir in @('background','core','icons','lib','map')) { Copy-Item -LiteralPath (Join-Path $rootPath $dir) -Destination (Join-Path $unpacked $dir) -Recurse }
 New-Item -ItemType Directory -Force -Path (Join-Path $unpacked 'data') | Out-Null
 foreach ($file in @('kml_layers_v2.json','mapping.json','scada_auth.json')) { Copy-Item -LiteralPath (Join-Path $rootPath "data\$file") -Destination (Join-Path $unpacked "data\$file") }
-$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'; $zip = Join-Path $dist "WebSCADA_0.3.0_$stamp.zip"
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'; $zip = Join-Path $dist "WebSCADA_0.4.0_$stamp.zip"
 Push-Location $unpacked
 try { Compress-Archive -Path .\* -DestinationPath $zip -CompressionLevel Optimal } finally { Pop-Location }
 $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)

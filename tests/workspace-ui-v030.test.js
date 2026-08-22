@@ -43,12 +43,19 @@ test('reference lines reuse only verified map capacity and voltage semantics', (
   assert.deepEqual(chart.voltageLines({ kv: 66 }), [{ value: 66, label: '66 kV nominal' }]);
 });
 
+test('native and derived MVA remain separate chart series', () => {
+  const panes = chart.buildPanes([row('P','start',100),row('Q','start',20),row('S','start',103)], { kind:'hat' });
+  const mva = panes.find((pane) => pane.key === 'mva'); assert.equal(mva.series.length, 2);
+  assert.ok(mva.series.some((series) => /Ölçülen MVA/.test(series.label))); assert.ok(mva.series.some((series) => /Hesaplanan MVA/.test(series.label)));
+  assert.match(source('core/query-chart.js'), /formatTick/); assert.match(source('core/query-chart.js'), /ref\.label/);
+});
+
 test('v0.3 data/query UI removes normal query table but keeps audit IDs in CSV only', () => {
   const html = source('app.html'); const app = source('app.js');
   assert.match(html, /id="dataYtm"/); assert.match(html, /id="dataTm"/); assert.match(html, /id="dataKv"/); assert.match(html, /id="queryChart"/);
   assert.ok(!html.includes('query-table-toolbar')); assert.ok(!html.includes('queryRows'));
-  assert.match(app, /new Set\(app\.entities\.map\(\(e\) => e\.__ws\.kv\)/);
-  assert.match(app, /VarlikID:e\.id/); assert.match(app, /SINSID:d\.measurementId/); assert.match(app, /BM:bmOf\(e\)/);
+  assert.match(app, /WebSCADAYtbsHierarchy\.create/);
+  assert.match(app, /VarlikID:e\.id/); assert.match(app, /SINSID:d\.measurementId/); assert.match(app, /BM:bm\(e\)/);
   assert.match(app, /WebSCADAQueryChart\.mount/);
   assert.match(app, /window\.applyTheme/); assert.match(app, /document\.documentElement\.dataset\.theme/);
   assert.match(app, /WebSCADASelection\.subscribe/);

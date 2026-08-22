@@ -15,8 +15,12 @@
   const text = (date) => date.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
   const terminalLabel = (descriptor) => {
     if (descriptor?.sourceTmName && descriptor?.targetTmName) return `${descriptor.sourceTmName} → ${descriptor.targetTmName}`;
-    if (descriptor?.terminalSide) return `Terminal ${descriptor.terminalSide}`;
-    return '—';
+    if (descriptor?.sourceTmName) return descriptor.sourceTmName;
+    if (descriptor?.targetTmName) return descriptor.targetTmName;
+    if (descriptor?.b1 || descriptor?.b2 || descriptor?.b3) return [descriptor.b1, descriptor.b2, descriptor.b3].filter(Boolean).join(' / ');
+    if (descriptor?.element) return descriptor.element;
+    if (descriptor?.terminalSide && descriptor.terminalSide !== 'unknown') return `Terminal ${descriptor.terminalSide}`;
+    return `Ölçüm ${descriptor?.terminalOrdinal || 1}`;
   };
   function normalizeQueryRows(rawRows, entity, descriptors, common) {
     const scada = common || globalThis.SCADA_COMMON || {};
@@ -36,7 +40,7 @@
       seen.add(logicalKey); stats.validRows += 1;
       rows.push({ timestamp, timestampMs, timestampText: text(timestamp), rawTimestamp: raw?.__timestamp ?? raw?.__time ?? raw?.timestamp ?? raw?.['MAX(__time)'] ?? null,
         entityId: descriptor.entityId || entity?.id || '', entityName: descriptor.entityName || entity?.displayName || entity?.name || '', entityType: descriptor.entityType || entity?.kind || '',
-        terminalSide: descriptor.terminalSide || 'unknown', sourceTmName: descriptor.sourceTmName || null, targetTmName: descriptor.targetTmName || null,
+        terminalSide: descriptor.terminalSide || 'unknown', terminalKey: descriptor.terminalKey || sinsid, sourceTmName: descriptor.sourceTmName || null, targetTmName: descriptor.targetTmName || null, b1: raw?.b1Name ?? descriptor.b1 ?? null, b2: raw?.b2Name ?? descriptor.b2 ?? null, b3: raw?.b3Name ?? descriptor.b3 ?? null, element: raw?.element ?? descriptor.element ?? null, elementName: raw?.elementName ?? descriptor.elementName ?? metric,
         sinsid, metric, metricLabel: info.label, unit: descriptor.unit || info.unit, value, quality: raw?.quality ?? raw?.dataQuality ?? null,
         seriesKey, seriesLabel: `${terminalLabel(descriptor)} | ${info.label}` });
     });

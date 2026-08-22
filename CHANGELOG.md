@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+- Added a shared canonical YTBS hierarchy for operational YTM, BM, TM and child entities.
+- Fixed workspace scroll locking, query selector consistency, TM SCADA presentation and transformer classification.
+- Improved query MVA provenance, chart time-axis labels and visible reference labels.
+
 ## 0.3.0
 
 - Rebuilt the Data workspace around progressive topology filters, compact summaries, and human-readable results.

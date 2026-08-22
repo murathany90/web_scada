@@ -58,3 +58,13 @@ test('alarm runtime includes offscreen audio, compact history and no credential 
   const source = fs.readFileSync(path.join(__dirname, '..', 'background', 'alarm-monitor.js'), 'utf8'); const worker = fs.readFileSync(path.join(__dirname, '..', 'background', 'service-worker.js'), 'utf8'); const html = fs.readFileSync(path.join(__dirname, '..', 'app.html'), 'utf8');
   assert.match(worker, /ALARM_RUN_NOW/); assert.match(worker, /onStartup/); assert.match(source, /webscadaMonitorCycles/); assert.match(source, /function acquire/); assert.match(source, /WebSCADAAlarmModel\.LIMITS\.events/); assert.ok(!/password|username|csrf/i.test(source)); assert.match(html, /data-webscada-tab="alarms"/); assert.ok(fs.existsSync(path.join(__dirname, '..', 'offscreen', 'alarm-audio.html')));
 });
+
+test('alarm UI binds controls before catalog loading and exposes explicit action feedback', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'alarm-view.js'), 'utf8');
+  assert.ok(source.indexOf('bind(); bindFeedbackActions();') < source.indexOf('await loadCatalog()'));
+  assert.match(source, /Alarm kataloğu yüklenemedi/);
+  assert.match(source, /Kaydediliyor…/);
+  assert.match(source, /Kural kaydedildi\./);
+  assert.match(source, /Test bildirimi gönderildi\./);
+  assert.match(source, /Test sesi çalındı\./);
+});

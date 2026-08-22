@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2
+
+- Packaged the alarm workspace controller and added build-time validation for every local HTML script and stylesheet asset.
+- Kept alarm actions usable when the topology catalog cannot load, with explicit save/run/test feedback.
+
 ## 0.5.1
 
 - Added one global Superset request coordinator with priority, deduplication and coalesced map auto-refresh jobs.

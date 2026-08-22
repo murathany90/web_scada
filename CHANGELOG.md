@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.3
+
+- Defaulted legacy alarm severity to warning, removed Bara from alarm-rule type selection and recorded the true next Chrome scheduler time.
+- Added rule/rule-ID/source fields to the alarm-event CSV export.
+
 ## 0.6.2
 
 - Prevented stale alarm cycles from committing after a rule or exemption revision, and made filter-group entity type explicit.

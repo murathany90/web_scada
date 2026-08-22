@@ -8,7 +8,7 @@ test('config revision gate detects an edited rule before an old cycle can commit
 
 test('filtered group type remains explicit and never mixes Hat, Trafo or Bara', () => {
   const entries = ['hat', 'trafo', 'bara'].map(type => ({ entityId: type, entityType: type, entityName: type, ytm: ['Y'], bm: ['B'], tm: 'TM', kv: '154', activeDescriptors: [], reactiveDescriptors: [] }));
-  ['hat', 'trafo', 'bara'].forEach(type => assert.deepEqual(catalog.resolve({ scopeType: 'filter', filters: { type, ytm: 'Y' } }, entries).map(entity => entity.entityType), [type])); assert.deepEqual(catalog.resolve({ scopeType: 'filter', filters: { ytm: 'Y' } }, entries).map(entity => entity.entityType), ['hat']);
+  ['hat', 'trafo'].forEach(type => assert.deepEqual(catalog.resolve({ scopeType: 'filter', filters: { type, ytm: 'Y' } }, entries).map(entity => entity.entityType), [type])); assert.deepEqual(catalog.resolve({ scopeType: 'filter', filters: { ytm: 'Y' } }, entries).map(entity => entity.entityType), ['hat']);
 });
 
 test('default TEMELLİ-BAYMİNA exclusions use canonical IDs and can be removed', () => {

@@ -55,3 +55,4 @@ const WebSCADAApi = (() => {
   }
   return { DEFAULTS, chartPayload, historyPayload, historyTimeRange, formatSupersetTime, fetchChart };
 })();
+if (typeof module === 'object' && module.exports) module.exports = WebSCADAApi;

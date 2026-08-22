@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.4
+
+- Added 3-minute alarm checks, scheduled-cadence anchoring, force-all manual checks and owner-safe renewable alarm leases.
+- Added an alarm-only raw latest-value path, five-minute freshness, compact semantic live cache and partial-batch diagnostics.
+- Safely disabled legacy Bara loading rules rather than converting them into Hat rules.
+
 ## 0.6.3
 
 - Defaulted legacy alarm severity to warning, removed Bara from alarm-rule type selection and recorded the true next Chrome scheduler time.

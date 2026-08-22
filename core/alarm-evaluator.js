@@ -23,7 +23,7 @@
     // Mirrors map/scada-v2-runtime.js: Hat uses P/Q apparent magnitude; Trafo
     // uses the active candidate when present, otherwise its reactive candidate.
     const magnitude = entity.entityType === 'hat' ? (Number.isFinite(pv) ? Math.hypot(pv, Number.isFinite(qv) ? qv : 0) : qv) : (Number.isFinite(pv) ? pv : qv);
-    const timestamp = new Date(timeOf(primary?.row)); if (!Number.isFinite(magnitude) || !Number.isFinite(timestamp.getTime()) || now - timestamp.getTime() > 3600000) return { loadingPct: null, reason: 'Bayat veya geçersiz veri', capacityMva: c, valueTimestamp: Number.isFinite(timestamp.getTime()) ? timestamp.toISOString() : null };
+    const timestamp = new Date(timeOf(primary?.row)); const candidateTimes = [p, q].filter(Boolean).map(candidate => timeOf(candidate.row)); if (!Number.isFinite(magnitude) || !Number.isFinite(timestamp.getTime()) || candidateTimes.some(time => !Number.isFinite(time) || now - time > 5 * 60000)) return { loadingPct: null, reason: 'Bayat veya geçersiz veri', capacityMva: c, valueTimestamp: Number.isFinite(timestamp.getTime()) ? timestamp.toISOString() : null };
     return { loadingPct: magnitude / c * 100, capacityMva: c, activeMw: pv, reactiveMvar: qv, valueTimestamp: timestamp.toISOString(), activeDescriptor: p?.descriptor || null, reactiveDescriptor: q?.descriptor || null, reason: '' };
   }
   return { evaluate, capacity, latest, selectMetric };

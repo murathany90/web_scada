@@ -6,7 +6,7 @@ test('legacy rules without severity normalize to warning and only explicit criti
 });
 
 test('Bara stays eligible for exemptions but never resolves as an alarm filter type', () => {
-  const entries = [{ entityId: 'hat', entityType: 'hat', ytm: [], bm: [], tm: '', kv: '', activeDescriptors: [] }, { entityId: 'bara', entityType: 'bara', ytm: [], bm: [], tm: '', kv: '', activeDescriptors: [] }]; assert.deepEqual(catalog.resolve({ scopeType: 'filter', filters: { type: 'bara' } }, entries).map(entry => entry.entityType), ['hat']); assert.equal(exemptions.normalize([{ entityId: 'bara', entityType: 'bara', displayLabel: 'B1' }]).length, 1); const view = fs.readFileSync(path.join(root, 'alarm-view.js'), 'utf8'); assert.ok(view.includes(`querySelector('option[value="bara"]')?.remove()`));
+  const entries = [{ entityId: 'hat', entityType: 'hat', ytm: [], bm: [], tm: '', kv: '', activeDescriptors: [] }, { entityId: 'bara', entityType: 'bara', ytm: [], bm: [], tm: '', kv: '', activeDescriptors: [] }]; assert.deepEqual(catalog.resolve({ scopeType: 'filter', filters: { type: 'bara' } }, entries).map(entry => entry.entityType), []); assert.equal(exemptions.normalize([{ entityId: 'bara', entityType: 'bara', displayLabel: 'B1' }]).length, 1); const view = fs.readFileSync(path.join(root, 'alarm-view.js'), 'utf8'); assert.ok(view.includes(`querySelector('option[value="bara"]')?.remove()`));
 });
 
 test('scheduler diagnostics store the freshly read next scheduler time', async () => {

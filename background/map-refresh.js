@@ -9,7 +9,7 @@ const WebSCADAMapRefresh = (() => {
     if (!settings.autoRefreshEnabled || context.enabled === false || !context.payload?.measurementIds?.length) return { ok: true, skipped: 'disabled' };
     await chrome.storage.local.set({ [STATUS]: { ...old, enabled: true, running: true, lastStartedAt: startedAt, lastTrigger: trigger, lastError: '' } });
     try {
-      const payload = { ...context.payload, triggerType: 'auto-background' };
+      const payload = { ...context.payload, triggerType: 'auto-background', liveCacheSemantics: 'map-aggregate' };
       const result = await WebSCADARequestCoordinator.run({ key: WebSCADARequestCoordinator.requestKey('SCADA_FETCH', payload), coalesceKey: 'map-auto-refresh', priority: 4, label: 'Harita arka plan yenileme' }, () => WebSCADAQuery.executeLiveScada(payload));
       if (!result?.ok) throw Object.assign(new Error(result?.error || 'SCADA arka plan sorgusu başarısız.'), { type: result?.errorType });
       const completedAt = new Date().toISOString(); const resultEntry = { at: Date.now(), completedAt, scope: context.scope, data: result.data, transport: { authMode: result.authMode, httpStatus: result.httpStatus, meta: result.meta } };

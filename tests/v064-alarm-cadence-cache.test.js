@@ -1,0 +1,29 @@
+const test = require('node:test'); const assert = require('node:assert/strict'); const fs = require('node:fs'); const path = require('node:path');
+const root = path.resolve(__dirname, '..'); const model = require('../core/alarm-model.js'); const catalog = require('../core/alarm-catalog.js'); const exemptions = require('../core/alarm-exemptions.js'); const api = require('../background/superset-api.js');
+function storage(seed = {}) { const data = { ...seed }; return { data, local: { get: async keys => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map(key => [key, data[key]])), set: async value => Object.assign(data, value) } }; }
+function monitorWith(store) { global.chrome = { storage: { local: store.local } }; global.WebSCADAAlarmModel = model; global.WebSCADAAlarmCatalog = catalog; global.WebSCADAAlarmExemptions = exemptions; delete require.cache[require.resolve('../background/alarm-monitor.js')]; return require('../background/alarm-monitor.js'); }
+
+test('1/2/3/5 minute rules use the scheduled cycle anchor, not query completion', () => {
+  const monitor = monitorWith(storage()); const start = 1_000_000; const rules = [1, 2, 3, 5].map(minutes => model.rule({ id: `r${minutes}`, thresholdPct: 90, checkIntervalMinutes: minutes })); const checks = Object.fromEntries(rules.map(rule => [rule.id, monitor.cadenceCheckAt(rule, 0, start, start)]));
+  assert.deepEqual(monitor.dueRules(rules, checks, {}, start + 61_000).map(rule => rule.id), ['r1']); assert.deepEqual(monitor.dueRules(rules, checks, {}, start + 121_000).map(rule => rule.id), ['r1', 'r2']); assert.deepEqual(monitor.dueRules(rules, checks, {}, start + 181_000).map(rule => rule.id), ['r1', 'r2', 'r3']); assert.deepEqual(monitor.dueRules(rules, checks, {}, start + 301_000).map(rule => rule.id), ['r1', 'r2', 'r3', 'r5']); assert.equal(model.rule({ thresholdPct: 90, checkIntervalMinutes: 3 }).checkIntervalMinutes, 3);
+});
+
+test('manual force-all ignores due time and background-off only gates automatic wakes', () => {
+  const monitor = monitorWith(storage()); const rules = [model.rule({ id: 'one', thresholdPct: 90, checkIntervalMinutes: 1 }), model.rule({ id: 'five', thresholdPct: 90, checkIntervalMinutes: 5 })]; assert.deepEqual(monitor.dueRules(rules, { one: Date.now(), five: Date.now() }, { forceAll: true }, Date.now()).map(rule => rule.id), ['one', 'five']); const source = fs.readFileSync(path.join(root, 'background', 'alarm-monitor.js'), 'utf8'); const worker = fs.readFileSync(path.join(root, 'background', 'service-worker.js'), 'utf8'); assert.match(source, /trigger === 'alarm-background' && !settings\.backgroundMonitoringEnabled/); assert.match(worker, /run\('alarm-manual', \{ forceAll: true \}\)/);
+});
+
+test('lease owner prevents an old cycle from releasing a newer lease', async () => {
+  const store = storage(); const monitor = monitorWith(store); assert.equal(await monitor.acquire('old'), true); store.data.alarmMonitorLease = { running: true, ownerId: 'new', startedAt: Date.now(), expiresAt: Date.now() + 1000 }; assert.equal(await monitor.release('old'), false); assert.equal(store.data.alarmMonitorLease.ownerId, 'new'); assert.match(fs.readFileSync(path.join(root, 'background', 'alarm-monitor.js'), 'utf8'), /renew\(owner\)/);
+});
+
+test('legacy Bara loading rules are disabled instead of becoming Hat rules', () => {
+  const monitor = monitorWith(storage()); const migrated = monitor.migrateLegacyBaraRules([{ id: 'bara-old', thresholdPct: 90, scopeType: 'filter', filters: { type: 'bara' }, enabled: true }]); assert.equal(migrated.changed, true); assert.equal(migrated.rules[0].enabled, false); assert.match(migrated.rules[0].migrationNotice, /Bara/); assert.deepEqual(catalog.resolve(migrated.rules[0], [{ entityId: 'h', entityType: 'hat' }]), []);
+});
+
+test('partial batches are explicitly reported and latest alarm values use raw timestamp order', async () => {
+  global.chrome = { runtime: { sendMessage: () => ({ catch() {} }) } }; global.WebSCADAAuth = { loadConfig: async () => ({}), invalidateCsrf() {}, directLogin: async () => ({ ok: false }), hiddenTabLogin: async () => ({ ok: false }) }; global.WebSCADAApi = { fetchChart: async (_config, request) => request.measurementIds.includes('201') ? { ok: false, shouldRetryAuth: false, error: 'timeout' } : { ok: true, data: { result: [{ data: [{ sinsid: '1', elementName: 'P', __time: '2026-08-23T10:00:00Z', maxValue: 1 }] }] } } }; delete require.cache[require.resolve('../background/query-service.js')]; const query = require('../background/query-service.js'); const partial = await query.fetchBatches({ measurementIds: Array.from({ length: 201 }, (_, index) => String(index + 1)) }, ids => ({ measurementIds: ids })); assert.equal(partial.ok, true); assert.equal(partial.meta.failedBatches, 1); assert.equal(partial.meta.completedBatches, 1); assert.deepEqual(partial.meta.failedMeasurementIds, ['201']); const latest = query.latestRows([{ sinsid: 'p', elementName: 'P', __time: '2026-08-23T10:00:00Z', maxValue: 10 }, { sinsid: 'p', elementName: 'P', __time: '2026-08-23T10:01:00Z', maxValue: 20 }]); assert.equal(latest[0].maxValue, 20); const raw = api.historyPayload({}, { queryMode: 'raw', timeRange: 'x' }, ['p']); assert.equal(raw.form_data.query_mode, 'raw'); assert.deepEqual(raw.form_data.order_by_cols, ['__time DESC']);
+});
+
+test('live cache never reuses incompatible query semantics', async () => {
+  const store = storage(); global.chrome = { storage: { local: store.local } }; delete require.cache[require.resolve('../core/live-measurement-cache.js')]; const cache = require('../core/live-measurement-cache.js'); const now = new Date().toISOString(); await cache.merge([{ sinsid: 'p', elementName: 'P', __time: now, maxValue: 25 }], 'latest-current', 'alarm-current'); assert.equal((await cache.read(['p'], 'latest-current')).reusedIds.length, 1); assert.deepEqual((await cache.read(['p'], 'map-aggregate')).missingIds, ['p']);
+});

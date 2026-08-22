@@ -2,7 +2,7 @@
 
 **WebSCADA**, TEİAŞ YTBS (Yük Tevzi Bilgi Sistemi) topoloji modeli ile Superset üzerinden alınan SCADA verilerini tek bir Chrome eklentisi içinde **Datalar**, **Sorgular** ve **Harita** çalışma alanlarında birleştiren bağımsız bir Manifest V3 uygulamasıdır.
 
-> Güncel sürüm: **v0.4.0**
+> Güncel sürüm: **v0.4.1**
 > Eklenti tipi: **Chrome Extension / Manifest V3**  
 > Ana dil: **Türkçe**  
 > Çalışma modeli: **Yerel YTBS topolojisi + kurum Superset/SCADA verisi**
@@ -562,7 +562,7 @@ Build çıktısı:
 ```text
 dist/
 ├── chrome-extension/
-└── WebSCADA_0.4.0_YYYYMMDD_HHMMSS.zip
+└── WebSCADA_0.4.1_YYYYMMDD_HHMMSS.zip
 ```
 
 Build sonunda SHA256 hesaplanır.
@@ -1051,6 +1051,11 @@ Kontrol:
 
 # Sürüm geçmişi
 
+## v0.4.1
+
+- Datalar ayrıntısı artık önceki seçimi değil, tıklanan varlığın SCADA eşleşmesini gösterir.
+- TM satırları SCADA eşleşmiş/eşleşmemiş filtrelerinden çıkarılır.
+
 ## v0.4.0
 
 - Ortak YTBS hiyerarşisi, canonical YTM/BM filtreleri ve TM alt-varlık gezintisi
@@ -1143,6 +1148,6 @@ node_modules/
 
 # Durum
 
-WebSCADA v0.4.0 bağımsız bir Chrome MV3 extension olarak geliştirilmekte ve parent repository'den ayrılmış yapıdadır.
+WebSCADA v0.4.1 bağımsız bir Chrome MV3 extension olarak geliştirilmekte ve parent repository'den ayrılmış yapıdadır.
 
 Yeni geliştirmelerin bağımsız WebSCADA repository üzerinde sürdürülmesi önerilir.

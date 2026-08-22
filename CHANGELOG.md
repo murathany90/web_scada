@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1
+
+- Fixed Data detail SCADA descriptors to always use the clicked entity rather than a prior workspace selection.
+- Excluded Trafo Merkezi rows from both matched and unmatched SCADA filters; TM remains an inventory/container row only.
+
 ## 0.4.0
 
 - Added a shared canonical YTBS hierarchy for operational YTM, BM, TM and child entities.

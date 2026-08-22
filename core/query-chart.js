@@ -1,0 +1,59 @@
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  root.WebSCADAQueryChart = api;
+}(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  const COLORS = ['#22c55e', '#38bdf8', '#f97316', '#a78bfa', '#f43f5e', '#facc15'];
+  const formatTime = (ms) => new Date(ms).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+  const closest = (points, ms) => points.reduce((best, p) => !best || Math.abs(p.timestampMs - ms) < Math.abs(best.timestampMs - ms) ? p : best, null);
+  function capacityLines(entity) {
+    const isHat = entity?.kind === 'hat'; const isTrafo = entity?.kind === 'trafo' || String(entity?.kind || '').startsWith('trafo'); const lines = [];
+    if (isHat) {
+      const summer = Number(entity?.summerCapacityMva); const winter = Number(entity?.winterCapacityMva);
+      if (Number.isFinite(summer) && summer > 0) lines.push({ value: summer, label: 'Yaz kapasitesi' });
+      if (Number.isFinite(winter) && winter > 0) lines.push({ value: winter, label: 'Kış kapasitesi' });
+      return lines;
+    }
+    if (isTrafo) {
+      const capacity = [entity?.ofafMva, entity?.onafMva, entity?.onanMva, entity?.bazGucuMva].map(Number).find((value) => Number.isFinite(value) && value > 0);
+      if (capacity) lines.push({ value: capacity, label: 'Kapasite' });
+    }
+    return lines;
+  }
+  function voltageLines(entity) {
+    const level = Math.round(Number(entity?.gerilimKv || entity?.kvBucket || entity?.kv || entity?.primaryKv || 0));
+    const lines = Number.isFinite(level) && level > 0 ? [{ value: level, label: `${level} kV nominal` }] : [];
+    if (level === 400 || level === 380) lines.push({ value: 380, label: '380 kV alt limit' }, { value: 420, label: '420 kV üst limit' });
+    if (level === 154 || level === 170) lines.push({ value: 140, label: '140 kV alt limit' }, { value: 170, label: '170 kV üst limit' });
+    return lines;
+  }
+  function derivedMva(rows) {
+    const p = new Map(); const q = new Map(); (rows || []).forEach((r) => { const key = `${r.terminalSide}|${r.timestampMs}`; if (r.metric === 'P') p.set(key, r); if (r.metric === 'Q') q.set(key, r); });
+    const result = []; p.forEach((pr, key) => { const qr = q.get(key); if (!qr) return; result.push({ ...pr, metric: 'S', metricLabel: 'Görünür Güç', unit: 'MVA', value: Math.hypot(pr.value, qr.value), seriesKey: `${pr.entityId}|${pr.terminalSide}|derived-s|S`, seriesLabel: `${pr.seriesLabel.split(' | ')[0]} | Görünür Güç`, derived: true }); }); return result;
+  }
+  function buildPanes(rows, entity) {
+    const source = [...(rows || [])]; const panes = []; const add = (key, title, unit, metrics, refs = []) => { const series = new Map(); source.filter((r) => metrics.includes(r.metric)).forEach((r) => { if (!series.has(r.seriesKey)) series.set(r.seriesKey, { key: r.seriesKey, label: r.seriesLabel.split(' | ')[0], unit, points: [] }); series.get(r.seriesKey).points.push(r); }); if (series.size) panes.push({ key, title, unit, series: [...series.values()], refs }); };
+    add('mw', 'Aktif Güç', 'MW', ['P']); add('mvar', 'Reaktif Güç', 'MVar', ['Q']); const mva = derivedMva(source); if (mva.length) { source.push(...mva); add('mva', 'Görünür Güç', 'MVA', ['S'], capacityLines(entity)); } add('voltage', 'Gerilim', 'kV', ['U'], voltageLines(entity)); add('current', 'Akım', 'A', ['I']); return panes;
+  }
+  function rangeAfterWheel(range, full, anchorRatio, zoomIn) { const span = range.end - range.start; const min = Math.min(120000, full.end - full.start); const next = clamp(span * (zoomIn ? 0.84 : 1.19), min, full.end - full.start); const anchor = range.start + span * anchorRatio; let start = anchor - next * anchorRatio; start = clamp(start, full.start, full.end - next); return { start, end: start + next }; }
+  function rangeAfterPan(range, full, ratio) { const span = range.end - range.start; const start = clamp(range.start - ratio * span, full.start, full.end - span); return { start, end: start + span }; }
+  function mount(host, config) {
+    const rows = config?.rows || []; const panes = buildPanes(rows, config?.entity); const legend = config?.legend; const tooltip = config?.tooltip; if (!host || !panes.length) { if (host) host.innerHTML = '<div class="query-chart-state">Grafik için veri yok.</div>'; return { cleanup() {} }; }
+    const all = panes.flatMap((p) => p.series.flatMap((s) => s.points)); const full = { start: Math.min(...all.map((p) => p.timestampMs)), end: Math.max(...all.map((p) => p.timestampMs)) }; let range = { ...full }; const hidden = new Set(); let dragging = null; const ns = 'http://www.w3.org/2000/svg'; host.replaceChildren(); if (tooltip) { tooltip.hidden = true; host.appendChild(tooltip); } if (legend) legend.replaceChildren(); const svg = document.createElementNS(ns, 'svg'); svg.classList.add('query-trend-svg'); svg.setAttribute('viewBox', `0 0 1100 ${Math.max(520, panes.length * 210 + 48)}`); host.appendChild(svg);
+    const width = 1100, left = 72, right = 24, paneH = Math.max(170, Math.floor((Number(svg.viewBox.baseVal.height) - 48) / panes.length));
+    const color = (key) => COLORS[Math.abs([...key].reduce((n, c) => n + c.charCodeAt(0), 0)) % COLORS.length];
+    function draw() { svg.replaceChildren(); const span = Math.max(1, range.end - range.start); panes.forEach((pane, index) => { const top = 18 + index * paneH, bottom = top + paneH - 36, plotH = bottom - top - 20; const active = pane.series.filter((s) => !hidden.has(s.key)); const values = active.flatMap((s) => s.points.filter((p) => p.timestampMs >= range.start && p.timestampMs <= range.end).map((p) => p.value)).concat(pane.refs.map((r) => r.value)); const min = Math.min(...values, 0), max = Math.max(...values, 1); const pad = (max - min || 1) * .1; const lo = min - pad, hi = max + pad; const x = (ms) => left + (ms - range.start) / span * (width - left - right); const y = (v) => top + 20 + (hi - v) / (hi - lo || 1) * plotH;
+      [['text', { x: left, y: top + 12, fill: 'var(--text-strong)', 'font-size': 13, 'font-weight': 700 }, `${pane.title} (${pane.unit})`], ['line', { x1: left, y1: bottom, x2: width - right, y2: bottom, stroke: 'var(--chart-grid)' }]].forEach(([tag, attrs, text]) => { const e = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); if (text) e.textContent = text; svg.appendChild(e); });
+      for (let t = 0; t < 5; t++) { const v = lo + (hi - lo) * t / 4, yy = y(v); const line = document.createElementNS(ns, 'line'); ['x1','x2'].forEach((a) => line.setAttribute(a, a === 'x1' ? left : width - right)); line.setAttribute('y1', yy); line.setAttribute('y2', yy); line.setAttribute('stroke', 'var(--chart-grid)'); line.setAttribute('stroke-dasharray', '3 4'); svg.appendChild(line); const label = document.createElementNS(ns, 'text'); label.setAttribute('x', left - 8); label.setAttribute('y', yy + 4); label.setAttribute('text-anchor', 'end'); label.setAttribute('fill', 'var(--muted)'); label.setAttribute('font-size', '10'); label.textContent = `${v.toFixed(1)} ${pane.unit}`; svg.appendChild(label); }
+      pane.refs.forEach((ref) => { const line = document.createElementNS(ns, 'line'); line.setAttribute('x1', left); line.setAttribute('x2', width - right); line.setAttribute('y1', y(ref.value)); line.setAttribute('y2', y(ref.value)); line.setAttribute('stroke', 'var(--chart-reference)'); line.setAttribute('stroke-dasharray', '7 4'); svg.appendChild(line); });
+      active.forEach((series) => { const points = WebSCADAQueryNormalizer.minMaxDownsample(series.points.filter((p) => p.timestampMs >= range.start && p.timestampMs <= range.end), 900); let last = null; const d = points.map((p, i) => { const gap = last && p.timestampMs - last.timestampMs > span / Math.max(3, points.length) * 3; last = p; return `${i === 0 || gap ? 'M' : 'L'}${x(p.timestampMs).toFixed(1)},${y(p.value).toFixed(1)}`; }).join(' '); const path = document.createElementNS(ns, 'path'); path.setAttribute('d', d); path.setAttribute('fill', 'none'); path.setAttribute('stroke', color(series.key)); path.setAttribute('stroke-width', '2.4'); svg.appendChild(path); });
+      if (config.hoverMs != null) { const xx = x(config.hoverMs); const cross = document.createElementNS(ns, 'line'); cross.setAttribute('x1', xx); cross.setAttribute('x2', xx); cross.setAttribute('y1', top + 18); cross.setAttribute('y2', bottom); cross.setAttribute('stroke', 'var(--crosshair)'); cross.setAttribute('stroke-dasharray', '2 2'); svg.appendChild(cross); }
+    }); }
+    function updateTooltip(event) { const r = svg.getBoundingClientRect(); const ms = range.start + clamp((event.clientX - r.left) / r.width, 0, 1) * (range.end - range.start); config.hoverMs = ms; const items = panes.flatMap((p) => p.series.filter((s) => !hidden.has(s.key)).map((s) => ({ s, p: closest(s.points, ms) })).filter((x) => x.p && Math.abs(x.p.timestampMs - ms) < (range.end - range.start) * .06)); if (!items.length || !tooltip) return; tooltip.innerHTML = `<strong>${formatTime(ms)}</strong>${items.map(({s,p}) => `<div><i style="background:${color(s.key)}"></i>${s.label}<b>${p.value.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ${s.unit}</b></div>`).join('')}`; tooltip.hidden = false; tooltip.style.left = `${Math.min(host.clientWidth - 240, Math.max(8, event.clientX - r.left + 14))}px`; tooltip.style.top = `${Math.max(8, event.clientY - r.top + 14)}px`; draw(); }
+    svg.addEventListener('wheel', (e) => { e.preventDefault(); const rect = svg.getBoundingClientRect(); range = rangeAfterWheel(range, full, clamp((e.clientX - rect.left) / rect.width, 0, 1), e.deltaY < 0); draw(); }, { passive: false }); svg.addEventListener('mousedown', (e) => { if (e.button === 0) dragging = { x: e.clientX, range: { ...range } }; }); const move = (e) => { if (dragging) { const rect = svg.getBoundingClientRect(); range = rangeAfterPan(dragging.range, full, (e.clientX - dragging.x) / rect.width); draw(); } else if (svg.contains(e.target)) updateTooltip(e); }; window.addEventListener('mousemove', move); const up = () => { dragging = null; }; window.addEventListener('mouseup', up); svg.addEventListener('mouseleave', () => { if (tooltip) tooltip.hidden = true; config.hoverMs = null; draw(); }); svg.addEventListener('dblclick', () => { range = { ...full }; draw(); });
+    if (legend) panes.flatMap((p) => p.series).filter((s, i, a) => a.findIndex((v) => v.key === s.key) === i).forEach((s) => { const b = document.createElement('button'); b.className = 'query-chart-legend'; b.innerHTML = `<i style="background:${color(s.key)}"></i>${s.label}`; b.onclick = () => { hidden.has(s.key) ? hidden.delete(s.key) : hidden.add(s.key); b.classList.toggle('is-hidden', hidden.has(s.key)); draw(); }; legend.appendChild(b); });
+    draw(); return { reset: () => { range = { ...full }; draw(); }, cleanup: () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); } };
+  }
+  return { buildPanes, derivedMva, capacityLines, voltageLines, rangeAfterWheel, rangeAfterPan, mount };
+}));

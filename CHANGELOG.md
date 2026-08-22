@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Rebuilt the Data workspace around progressive topology filters, compact summaries, and human-readable results.
+- Replaced the normal Query table with a focused entity workspace and multi-pane interactive time-series charts.
+- Added terminal-aware P/Q-derived MVA panes, reference-capacity lines, CSV audit export, and map-synchronised theming.
+
 ## 0.2.0
 
 - Added canonical Superset query normalization and terminal-aware series.

@@ -45,5 +45,5 @@ test('pagination remains real pagination and conservative one-minute guardrail b
 });
 test('query workspace uses normalizer, exact map selection and no silent 1000 row truncation', () => {
   const fs = require('node:fs'); const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'app.js'), 'utf8');
-  assert.match(source, /WebSCADAQueryNormalizer\.normalizeQueryRows/); assert.match(source, /state\.selection = \{ kind, id: entity\.id/); assert.ok(!source.includes('queryRows.slice(0,1000)'));
+  assert.match(source, /WebSCADAQueryNormalizer\.normalizeQueryRows/); assert.match(source, /s\.selection=\{kind,id:e\.id/); assert.ok(!source.includes('queryRows.slice(0,1000)'));
 });

@@ -2,7 +2,7 @@
 
 **WebSCADA**, TEİAŞ YTBS (Yük Tevzi Bilgi Sistemi) topoloji modeli ile Superset üzerinden alınan SCADA verilerini tek bir Chrome eklentisi içinde **Datalar**, **Sorgular** ve **Harita** çalışma alanlarında birleştiren bağımsız bir Manifest V3 uygulamasıdır.
 
-> Güncel sürüm: **v0.4.1**
+> Güncel sürüm: **v0.5.0**
 > Eklenti tipi: **Chrome Extension / Manifest V3**  
 > Ana dil: **Türkçe**  
 > Çalışma modeli: **Yerel YTBS topolojisi + kurum Superset/SCADA verisi**
@@ -48,6 +48,7 @@ Uygulama şu üç ihtiyacı tek arayüzde karşılamayı hedefler:
 1. **YTBS topoloji verisini incelemek**
 2. **Superset/SCADA zaman serilerini sorgulamak**
 3. **Canlı ve geçmiş SCADA değerlerini harita üzerinde izlemek**
+4. **Chrome açıkken seçilmiş Hat/Trafo yüklenmelerini arka planda danışmanlık amaçlı izlemek**
 
 WebSCADA doğrudan bir SCADA kontrol sistemi değildir. Uygulama, mevcut veri kaynaklarından aldığı bilgileri **görüntüleme, sorgulama, analiz ve karşılaştırma** amacıyla kullanır.
 
@@ -87,7 +88,7 @@ WebSCADA doğrudan bir SCADA kontrol sistemi değildir. Uygulama, mevcut veri ka
 WebSCADA üç ana çalışma alanına ayrılır:
 
 ```text
-Datalar | Sorgular | Harita
+Datalar | Sorgular | Alarmlar | Harita
 ```
 
 ## 1. Datalar
@@ -562,7 +563,7 @@ Build çıktısı:
 ```text
 dist/
 ├── chrome-extension/
-└── WebSCADA_0.4.1_YYYYMMDD_HHMMSS.zip
+└── WebSCADA_0.5.0_YYYYMMDD_HHMMSS.zip
 ```
 
 Build sonunda SHA256 hesaplanır.
@@ -1051,6 +1052,11 @@ Kontrol:
 
 # Sürüm geçmişi
 
+## v0.5.0
+
+- Tek Chrome alarm scheduler'ı, kalıcı alarm kuralları, arka plan yüklenme izleme ve alarm geçmişi eklendi.
+- Arka plan izleme Chrome açık ve eklenti etkin iken çalışır; Chrome kapalıyken veya cihaz uykudayken gerçek-zaman garantisi yoktur.
+
 ## v0.4.1
 
 - Datalar ayrıntısı artık önceki seçimi değil, tıklanan varlığın SCADA eşleşmesini gösterir.
@@ -1148,6 +1154,6 @@ node_modules/
 
 # Durum
 
-WebSCADA v0.4.1 bağımsız bir Chrome MV3 extension olarak geliştirilmekte ve parent repository'den ayrılmış yapıdadır.
+WebSCADA v0.5.0 bağımsız bir Chrome MV3 extension olarak geliştirilmekte ve parent repository'den ayrılmış yapıdadır.
 
 Yeni geliştirmelerin bağımsız WebSCADA repository üzerinde sürdürülmesi önerilir.

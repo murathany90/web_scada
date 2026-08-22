@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0
+
+- Added persistent advisory background loading alarms with one Chrome alarm scheduler, chart-first SCADA queries, hysteresis, ACK/snooze, repeat control, notification rate limiting and offscreen audio.
+- Added compact Hat/Trafo catalog, deduplicated measurement query planning, persistent cycle/event/sample history and the Alarmlar workspace.
+
 ## 0.4.1
 
 - Fixed Data detail SCADA descriptors to always use the clicked entity rather than a prior workspace selection.

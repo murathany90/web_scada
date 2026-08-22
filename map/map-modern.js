@@ -211,7 +211,7 @@ async function init() {
   try {
     const [mappingRows, network, savedBaraSet, savedMapPrefs] = await Promise.all([
       fetchJson('data/mapping.json'),
-      fetchJson('data/kml_layers.json'),
+      fetchJson('data/kml_layers_v2.json'),
       chrome.storage.local.get(BARA_SET_CACHE_KEY),
       chrome.storage.local.get(MAP_PREFS_KEY)
     ]);

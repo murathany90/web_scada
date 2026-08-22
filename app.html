@@ -15,6 +15,7 @@
     <nav aria-label="Ana alanlar">
       <button class="webscada-tab" data-webscada-tab="data">Datalar</button>
       <button class="webscada-tab" data-webscada-tab="query">Sorgular</button>
+      <button class="webscada-tab" data-webscada-tab="alarms">Alarmlar <span id="alarmNavCount"></span></button>
       <button class="webscada-tab active" data-webscada-tab="map">Harita</button>
     </nav>
     <div id="webscadaStatus" class="webscada-status">Harita hazirlaniyor</div>
@@ -316,6 +317,14 @@
     <div class="query-toolbar"><label>Ön tanım <select id="queryPreset"><option value="1">1 saat</option><option value="6">6 saat</option><option value="24" selected>24 saat</option><option value="72">3 gün</option><option value="168">7 gün</option><option value="custom">Özel</option></select></label><label>Başlangıç <input id="queryStart" type="datetime-local"></label><label>Bitiş <input id="queryEnd" type="datetime-local"></label><label>Çözünürlük <select id="queryGrain"><option value="auto" selected>Otomatik</option><option value="PT1M">1 dk</option><option value="PT5M">5 dk</option><option value="PT10M">10 dk</option><option value="PT15M">15 dk</option><option value="PT30M">30 dk</option><option value="PT1H">1 saat</option></select></label><label id="queryTerminalWrap" hidden>Terminal <select id="queryTerminal"><option value="">Tümü</option></select></label><fieldset id="queryMetrics" class="metric-picks"><legend>Metrik</legend></fieldset><button id="runQuery" class="primary">Sorgula</button><button id="queryCsv">CSV indir</button></div>
     <div id="queryStatus" class="workspace-note">Hazır.</div><div id="querySummary" class="query-summary"></div><details id="queryAdvanced"><summary>Gelişmiş / Sorgu detayları</summary><div id="queryAdvancedBody"></div></details><div class="query-chart-actions"><div id="queryChartLegend"></div><button id="queryResetZoom">Zoom sıfırla</button></div><div id="queryChart" class="query-chart" aria-label="Sorgu grafiği"><div class="query-chart-state">Sorgu için bir varlık seçin.</div><div id="queryChartTooltip" class="query-chart-tooltip" hidden></div></div>
   </section>
+  <section id="webscadaAlarms" class="webscada-view" aria-label="Alarmlar">
+    <div class="workspace-head"><h1>Alarmlar</h1><p>Danışmanlık amaçlı arka plan yüklenme izleme. Koruma veya gerçek-zaman garanti sistemi değildir.</p></div>
+    <div class="alarm-status-grid" id="alarmStatusGrid"></div>
+    <div class="alarm-toolbar"><label class="toggle-row"><input id="alarmBackgroundEnabled" type="checkbox"><span>Arka plan izlemeyi etkinleştir</span></label><button id="alarmRunNow">Şimdi kontrol et</button><button id="alarmTestNotification">Bildirimi test et</button><button id="alarmTestSound">Sesi test et</button></div>
+    <div class="alarm-columns"><section class="alarm-card"><h2>Yeni / düzenle kural</h2><div class="alarm-form"><label>Ad <input id="alarmName" value="Yüksek yüklenme"></label><label>Kapsam <select id="alarmScope"><option value="selected">Seçili varlık</option><option value="multi">Birden çok varlık</option><option value="all-hats">Tüm Hatlar</option><option value="all-trafos">Tüm Trafolar</option><option value="filter">Filtreli grup</option></select></label><label>Varlık <select id="alarmEntity"></select></label><label>YTM <select id="alarmYtm"><option value="">Tümü</option></select></label><label>BM <select id="alarmBm"><option value="">Tümü</option></select></label><label>TM <input id="alarmTm" placeholder="TM adı"></label><label>kV <select id="alarmKv"><option value="">Tümü</option><option>400</option><option>154</option><option>66</option></select></label><label>Eşik % <input id="alarmThreshold" type="number" min="0.1" max="500" value="90"></label><label>Histerezis % <input id="alarmHysteresis" type="number" min="0" value="2"></label><label>Kapasite <select id="alarmSeason"><option value="winter">Kış</option><option value="summer">Yaz</option></select></label><label>Tekrar <select id="alarmRepeat"><option value="0">Yalnız geçişte</option><option value="5">5 dk</option><option value="15">15 dk</option><option value="30">30 dk</option></select></label><label class="toggle-row"><input id="alarmNotification" type="checkbox" checked><span>Chrome bildirimi</span></label><label class="toggle-row"><input id="alarmSound" type="checkbox"><span>Sesli alarm</span></label><label class="toggle-row"><input id="alarmRuleEnabled" type="checkbox" checked><span>Aktif</span></label><button id="alarmSave" class="primary">Kuralı Kaydet</button></div><p id="alarmRuleHint" class="workspace-note"></p></section><section class="alarm-card"><h2>Kurallar</h2><div id="alarmRules"></div></section></div>
+    <section class="alarm-card"><h2>Aktif alarmlar</h2><div id="alarmActive"></div></section>
+    <div class="alarm-columns"><section class="alarm-card"><h2>Alarm olayları</h2><button id="alarmEventsCsv">Alarm geçmişi CSV</button><div id="alarmEvents" class="alarm-list"></div></section><section class="alarm-card"><h2>Son 60 yenileme</h2><button id="alarmCyclesCsv">Yenileme CSV</button><div id="alarmCycles" class="alarm-list"></div><details><summary>Gelişmiş / Tanılama</summary><pre id="alarmDiagnostics"></pre></details></section></div>
+  </section>
   <script src="lib/xlsx.full.min.js"></script>
   <script src="core/topology-store.js"></script>
   <script src="core/ytbs-hierarchy.js"></script>
@@ -327,6 +336,10 @@
   <script src="core/query-normalizer.js"></script>
   <script src="core/query-chart.js"></script>
   <script src="app.js"></script>
+  <script src="core/alarm-model.js"></script>
+  <script src="core/alarm-catalog.js"></script>
+  <script src="core/alarm-evaluator.js"></script>
+  <script src="alarm-view.js"></script>
   <script src="map/map-common.js"></script>
   <script src="map/scada-common.js"></script>
   <script src="map/scada-client.js"></script>

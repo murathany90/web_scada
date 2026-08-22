@@ -552,6 +552,20 @@ async function scadaDoFetch(options = {}) {
       `SCADA ${triggerLabel.toLowerCase()} yenileme tamamlandi: ${rawRows} ham, ${rows.size} tekil, gorunen ${visibleSummary.matched || 0}/${visibleSummary.total || 0} canli.`,
       `${result.authMode}${result.usedFallback ? ' fallback' : ''}`
     );
+    // Keep only a compact shared refresh timeline for the alarm workspace; no
+    // topology, SCADA response, token or credential is persisted here.
+    chrome.runtime.sendMessage({
+      type: 'ALARM_RECORD_REFRESH_SUMMARY',
+      payload: {
+        source: triggerType === 'auto' ? 'map-auto' : 'map-manual',
+        startedAt: startedAt.toISOString(),
+        completedAt: finishedAt.toISOString(),
+        durationMs: finishedAt.getTime() - startedAt.getTime(),
+        entityCount: visibleSummary.total || 0,
+        measurementIdCount: rows.size,
+        returnedRowCount: rawRows
+      }
+    }).catch(() => {});
   } catch (error) {
     const finishedAt = new Date();
     const errorMessage = error.message || String(error);

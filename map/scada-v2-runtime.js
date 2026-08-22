@@ -571,6 +571,7 @@
     setScadaPanelPage(1);
     syncScadaMetricButtons();
     syncScadaMapDisplayButtons();
+    void syncBackgroundRefreshContext(getCurrentScadaScope());
     if (state.scada.enabled && options.fetch !== false) scadaDoFetch({ trigger: 'mode-change' });
     requestScadaOverlayRender();
     if (typeof refreshRankingTable === 'function') refreshRankingTable();
@@ -2162,6 +2163,11 @@
     return { ok: true, rows: rows.size };
   }
 
+  async function syncBackgroundRefreshContext(scope = state.scada.currentScope || getCurrentScadaScope()) {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage || !scope?.measurementIds?.length) return;
+    const payload = { baseUrl: SCADA_CONFIG.SUPERSET_ORIGIN, dashboardId: SCADA_CONFIG.DASHBOARD_ID, chartSliceId: SCADA_CONFIG.CHART_SLICE_ID, datasourceId: SCADA_CONFIG.DATASOURCE_ID, timeRange: SCADA_CONFIG.LIVE_WINDOW_TIME_RANGE, kvFilters: [], tearFilters: [], elementNames: scope.elementNames, measurementIds: scope.measurementIds, rowLimit: Math.max(SCADA_CONFIG.QUERY_ROW_LIMIT, scope.measurementIds.length * 3 || 5000) };
+    await chrome.runtime.sendMessage({ type: 'MAP_REFRESH_CONTEXT', payload: { enabled: Boolean(state.scada.enabled && state.scada.autoRefresh && state.scada.timeMode !== 'historical'), scope: { mode: scope.mode, filterKey: scope.filterKey, domain: scope.domain, primaryMetric: scope.primaryMetric, measurementIds: scope.measurementIds, elementNames: scope.elementNames }, payload } });
+  }
   let lastSnapshotTime = 0;
   async function persistScadaDashboardSnapshot(options = {}) {
     try {
@@ -2202,6 +2208,7 @@
           }
         }
       });
+      void syncBackgroundRefreshContext(scope);
       return { ok: true, snapshot };
     } catch (error) {
       scadaLog('warn', 'SCADA dashboard snapshot yazilamadi.', error?.message || String(error));
@@ -2226,6 +2233,13 @@
       scadaLog('warn', 'SCADA dashboard snapshot okunamadi.', error?.message || String(error));
       return { ok: false, error: error?.message || String(error) };
     }
+  }
+
+  async function applyBackgroundMapResult(result) {
+    if (!result?.data || state.scada.timeMode === 'historical') return { ok: false, skipped: true };
+    const scope = getCurrentScadaScope(); const saved = result.scope || {}; if (saved.filterKey !== scope.filterKey || saved.mode !== scope.mode || [...(saved.measurementIds || [])].sort().join(',') !== [...scope.measurementIds].sort().join(',')) return { ok: false, skipped: true, reason: 'scope-mismatch' };
+    const rows = normalizeScadaRows(result.data); if (!rows.size) return { ok: false, skipped: true, reason: 'empty' };
+    state.scada.currentScope = scope; applyScadaSnapshot(rows); state.scada.lastFetchAt = new Date(result.at || Date.now()); await persistScadaDashboardSnapshot({ force: true, source: 'background-worker' }); setScadaStatusMessage('SCADA arka plan snapshot uygulandı.', 'info'); return { ok: true, rows: rows.size };
   }
 
   function handleDashboardMapSlotActive(payload = {}) {
@@ -2257,6 +2271,8 @@
     state.scada.ambiguousRows = [];
     refreshScadaVisibleSummary();
     restoreScadaDashboardSnapshotFromStorage();
+    if (typeof chrome !== 'undefined' && chrome.storage?.local?.get) chrome.storage.local.get('webscadaBackgroundMapResult').then(data => applyBackgroundMapResult(data.webscadaBackgroundMapResult));
+    if (globalThis.WebSCADASettings) WebSCADASettings.load().then(settings => { state.scada.autoRefresh = settings.autoRefreshEnabled; state.scada.capacitySeason = settings.capacitySeason; if (state.scada.enabled && state.scada.autoRefresh) startScadaAutoScheduler(); });
     scadaLog('info', `SCADA V2 modulu hazir. ${state.network.hatLines.length} hat, ${state.network.trafos.length} trafo, ${state.network.baraNodes.length} bara yuklendi.`);
   };
 
@@ -2282,24 +2298,8 @@
       pollState.nextDueAt = null;
       return;
     }
-    const safeDelay = Math.max(0, Number(delayMs) || 0);
-    pollState.nextDueAt = new Date(Date.now() + safeDelay);
-    pollState.timerId = setTimeout(() => {
-      pollState.timerId = null;
-      if (!state.scada.enabled || !state.scada.autoRefresh) return;
-      if (isDocumentHidden()) {
-        scadaLog('info', 'SCADA otomatik yenileme sekme arka planda oldugu icin beklemeye alindi.');
-        return;
-      }
-      pollState.lastAutoRunAt = new Date();
-      pollState.nextDueAt = null;
-      if (state.scada.fetchInProgress) {
-        pollState.pendingAutoRefresh = true;
-        scadaLog('warn', 'SCADA otomatik yenileme tetigi beklemeye alindi; aktif sorgu tamamlaninca yeniden denenecek.');
-        return;
-      }
-      scadaDoFetch({ trigger: 'auto' });
-    }, safeDelay);
+    pollState.nextDueAt = new Date(Date.now() + Math.max(0, Number(delayMs) || 0));
+    void syncBackgroundRefreshContext();
   }
 
   function stopScadaAutoScheduler() {
@@ -2307,6 +2307,7 @@
     clearScadaAutoTimer();
     pollState.nextDueAt = null;
     pollState.pendingAutoRefresh = false;
+    void syncBackgroundRefreshContext();
     scadaLog('info', 'SCADA otomatik yenileme zamanlayicisi durduruldu.');
   }
 
@@ -2324,7 +2325,7 @@
       return;
     }
     scheduleNextScadaAutoTick(SCADA_CONFIG.POLL_INTERVAL_MS);
-    scadaLog('info', `SCADA otomatik yenileme zamanlayicisi baslatildi (${SCADA_CONFIG.POLL_INTERVAL_MS / 1000} sn).`);
+    scadaLog('info', 'SCADA otomatik yenileme service worker alarmına devredildi.');
   }
 
   function resumeScadaAutoSchedulerIfOverdue(reason = 'resume') {
@@ -2334,25 +2335,13 @@
       pollState.nextDueAt = null;
       return;
     }
-    if (isDocumentHidden()) return;
     pollState.lastVisibilityResumeAt = new Date();
     if (!pollState.nextDueAt) {
       scheduleNextScadaAutoTick(SCADA_CONFIG.POLL_INTERVAL_MS);
       return;
     }
     const remainingMs = pollState.nextDueAt.getTime() - Date.now();
-    if (remainingMs <= 0) {
-      scadaLog('info', `SCADA otomatik yenileme ${reason} sonrasi overdue tespit etti; hemen yenileme deneniyor.`);
-      if (state.scada.fetchInProgress) {
-        pollState.pendingAutoRefresh = true;
-        return;
-      }
-      pollState.lastAutoRunAt = new Date();
-      pollState.nextDueAt = null;
-      scadaDoFetch({ trigger: 'auto' });
-      return;
-    }
-    scheduleNextScadaAutoTick(remainingMs);
+    scheduleNextScadaAutoTick(remainingMs <= 0 ? SCADA_CONFIG.POLL_INTERVAL_MS : remainingMs);
   }
 
   markScadaFlowsUnavailable = function (reason, errorType) {
@@ -2552,24 +2541,8 @@
       return;
     }
 
-    if ((triggerType === 'manual' || triggerType === 'live-return') && isDocumentHidden()) {
-      const hiddenMessage = 'SCADA manuel yenileme sekme arka plandayken ertelendi. Sekmeye donup tekrar deneyin.';
-      updateScadaFetchMeta({
-        status: 'idle',
-        stage: 'idle',
-        progressPct: 0,
-        triggerType,
-        triggerLabel,
-        phaseLabel: 'Beklemede',
-        phaseMessage: hiddenMessage
-      });
-      setScadaStatusMessage(hiddenMessage, 'warn');
-      scadaLog('warn', hiddenMessage);
-      if (typeof refreshRankingTable === 'function') refreshRankingTable();
-      return;
-    }
-
     const scope = getCurrentScadaScope();
+    void syncBackgroundRefreshContext(scope);
     if (!scope.measurementIds.length) {
       state.scada.entityMetricsByKey = new Map();
       state.scada.measurementRowsById = new Map();
@@ -2970,19 +2943,8 @@ try {
           }
         }, 0);
       } else if (state.scada.autoRefresh && state.scada.enabled) {
-        if (pollState?.pendingAutoRefresh && !isDocumentHidden()) {
-          pollState.pendingAutoRefresh = false;
-          pollState.lastAutoRunAt = new Date();
-          pollState.nextDueAt = null;
-          scadaLog('info', 'Bekleyen otomatik yenileme aktif sorgu sonrasinda hemen calistiriliyor.');
-          setTimeout(() => {
-            if (state.scada.enabled && state.scada.autoRefresh && !state.scada.fetchInProgress) {
-              scadaDoFetch({ trigger: 'auto' });
-            }
-          }, 0);
-        } else {
-          scheduleNextScadaAutoTick(SCADA_CONFIG.POLL_INTERVAL_MS);
-        }
+        pollState.pendingAutoRefresh = false;
+        scheduleNextScadaAutoTick(SCADA_CONFIG.POLL_INTERVAL_MS);
       }
       if (typeof updateScadaCardUI === 'function') updateScadaCardUI();
       if (typeof refreshRankingTable === 'function') refreshRankingTable();
@@ -6989,15 +6951,7 @@ function _formatHistoryAxisLabel(timestampMs) {
 
   if (!window.__TPYS_SCADA_AUTO_RESUME_BOUND__) {
     window.__TPYS_SCADA_AUTO_RESUME_BOUND__ = true;
-    if (typeof document?.addEventListener === 'function') {
-      document.addEventListener('visibilitychange', () => {
-        if (getDocumentVisibilityState() === 'visible') resumeScadaAutoSchedulerIfOverdue('visibility');
-      });
-    }
-    if (typeof window?.addEventListener === 'function') {
-      window.addEventListener('focus', () => resumeScadaAutoSchedulerIfOverdue('focus'));
-      window.addEventListener('pageshow', () => resumeScadaAutoSchedulerIfOverdue('pageshow'));
-    }
+    // Network auto-refresh is owned by the service worker, including hidden or closed map tabs.
     if (typeof chrome !== 'undefined' && typeof chrome.runtime?.onMessage?.addListener === 'function') {
       chrome.runtime.onMessage.addListener((message) => {
         if (message?.type === 'DASHBOARD_MAP_SLOT_ACTIVE') {
@@ -7009,6 +6963,7 @@ function _formatHistoryAxisLabel(timestampMs) {
         }
       });
     }
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.webscadaBackgroundMapResult) void applyBackgroundMapResult(changes.webscadaBackgroundMapResult.newValue); });
   }
 
   function _formatTimeBadge(valueMs) {
@@ -7375,6 +7330,7 @@ function _formatHistoryAxisLabel(timestampMs) {
   globalThis.syncScadaMetricButtons = syncScadaMetricButtons;
   globalThis.syncScadaMapDisplayButtons = syncScadaMapDisplayButtons;
   globalThis.setScadaMetric = setScadaMetric;
+  globalThis.syncScadaBackgroundRefreshContext = syncBackgroundRefreshContext;
   globalThis.setScadaMapDisplayMode = setScadaMapDisplayMode;
   globalThis.setScadaTimeMode = setScadaTimeMode;
   globalThis.syncRankingKvFilterControl = syncRankingKvFilterControl;

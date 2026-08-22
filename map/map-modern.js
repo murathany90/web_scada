@@ -525,6 +525,7 @@ function setYtmFilterSelection(values) {
 
 function handleVisibilityFiltersChanged() {
   invalidateVisibleEntityCache();
+  if (typeof syncScadaBackgroundRefreshContext === 'function') void syncScadaBackgroundRefreshContext();
   if (typeof refreshScadaVisibleSummary === 'function') refreshScadaVisibleSummary();
   if (typeof refreshRankingTable === 'function') refreshRankingTable();
   if (typeof updateScadaCardUI === 'function') updateScadaCardUI();

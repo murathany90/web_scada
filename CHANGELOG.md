@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+- Added worker-owned SCADA auto-refresh, persistent settings, alarm diagnostics, severity-aware notifications and packaged WAV alarm choices.
+- Fixed all-Hat/all-Trafo alarm filtering to apply exact YTM/BM/TM/kV/type filters consistently.
+
 ## 0.5.2
 
 - Packaged the alarm workspace controller and added build-time validation for every local HTML script and stylesheet asset.

@@ -17,6 +17,7 @@
       <button class="webscada-tab" data-webscada-tab="query">Sorgular</button>
       <button class="webscada-tab" data-webscada-tab="alarms">Alarmlar <span id="alarmNavCount"></span></button>
       <button class="webscada-tab active" data-webscada-tab="map">Harita</button>
+      <button class="webscada-tab" data-webscada-tab="settings">Ayarlar</button>
     </nav>
     <div id="webscadaStatus" class="webscada-status">Harita hazirlaniyor</div>
     <button id="webscadaThemeToggle" class="webscada-theme-toggle" title="Temayı değiştir" aria-label="Temayı değiştir">☾</button>
@@ -107,7 +108,7 @@
           <div id="ytmFilters" class="filter-list"></div>
         </details>
 
-        <section class="panel">
+        <section class="panel" id="baraSetPanel">
           <div class="panel-head">
             <div>
               <h2>Bara Set</h2>
@@ -145,7 +146,7 @@
             </div>
             <div class="scada-controls">
               <label class="toggle-row"><input type="checkbox" data-scada-switch="enabled"><span>Katman</span></label>
-              <label class="toggle-row"><input type="checkbox" data-scada-switch="autoRefresh" checked><span>Oto.
+              <label class="toggle-row" hidden><input type="checkbox" data-scada-switch="autoRefresh" checked><span>Oto.
                   Yenile</span></label>
               <div class="scada-btns">
                 <button data-scada-btn="refresh" class="tiny scada-refresh-btn" title="Manuel Yenile"><span
@@ -210,7 +211,7 @@
                 </div>
               </div>
             </div>
-            <div class="scada-season-toggle" id="scadaSeasonToggle">
+            <div class="scada-season-toggle" id="scadaSeasonToggle" hidden>
               <span class="scada-label">Kapasite:</span>
               <div class="segmented segmented-mini">
                 <button id="btnSeasonWinter" class="segmented-btn active" data-season="winter">Kis</button>
@@ -321,9 +322,13 @@
     <div class="workspace-head"><h1>Alarmlar</h1><p>Danışmanlık amaçlı arka plan yüklenme izleme. Koruma veya gerçek-zaman garanti sistemi değildir.</p></div>
     <div class="alarm-status-grid" id="alarmStatusGrid"></div>
     <div class="alarm-toolbar"><label class="toggle-row"><input id="alarmBackgroundEnabled" type="checkbox"><span>Arka plan izlemeyi etkinleştir</span></label><button id="alarmRunNow">Şimdi kontrol et</button><button id="alarmTestNotification">Bildirimi test et</button><button id="alarmTestSound">Sesi test et</button></div>
-    <div class="alarm-columns"><section class="alarm-card"><h2>Yeni / düzenle kural</h2><div class="alarm-form"><label>Ad <input id="alarmName" value="Yüksek yüklenme"></label><label>Kapsam <select id="alarmScope"><option value="single-hat">Tek Hat</option><option value="single-trafo">Tek Trafo</option><option value="multi-hats">Seçili Hatlar</option><option value="multi-trafos">Seçili Trafolar</option><option value="all-hats">Tüm Hatlar</option><option value="all-trafos">Tüm Trafolar</option><option value="filter">Filtreli grup</option></select></label><label>Varlık <select id="alarmEntity"></select></label><label>YTM <select id="alarmYtm"><option value="">Tümü</option></select></label><label>BM <select id="alarmBm"><option value="">Tümü</option></select></label><label>TM <input id="alarmTm" placeholder="TM adı"></label><label>kV <select id="alarmKv"><option value="">Tümü</option><option>400</option><option>154</option><option>66</option></select></label><label>Eşik % <input id="alarmThreshold" type="number" min="0.1" max="500" value="90"></label><label>Histerezis % <input id="alarmHysteresis" type="number" min="0" value="2"></label><label>Kapasite <select id="alarmSeason"><option value="winter">Kış</option><option value="summer">Yaz</option></select></label><label>Kontrol aralığı <select id="alarmCheckInterval"><option value="1">1 dk</option><option value="2">2 dk</option><option value="5">5 dk</option><option value="10">10 dk</option><option value="15">15 dk</option></select></label><label>Alarm tekrarı <select id="alarmRepeat"><option value="0">Yalnız geçişte</option><option value="5">5 dk</option><option value="15">15 dk</option><option value="30">30 dk</option></select></label><label class="toggle-row"><input id="alarmNotification" type="checkbox" checked><span>Chrome bildirimi</span></label><label class="toggle-row"><input id="alarmSound" type="checkbox"><span>Sesli alarm</span></label><label class="toggle-row"><input id="alarmRuleEnabled" type="checkbox" checked><span>Aktif</span></label><button id="alarmSave" class="primary">Kuralı Kaydet</button></div><p id="alarmRuleHint" class="workspace-note"></p></section><section class="alarm-card"><h2>Kurallar</h2><div id="alarmRules"></div></section></div>
+    <div class="alarm-columns"><section class="alarm-card"><h2>Yeni / düzenle kural</h2><div class="alarm-form"><label>Ad <input id="alarmName" value="Yüksek yüklenme"></label><label>Seviye <select id="alarmSeverity"><option value="warning">Uyarı</option><option value="critical">Kritik</option></select></label><label>Kapsam <select id="alarmScope"><option value="single-hat">Tek Hat</option><option value="single-trafo">Tek Trafo</option><option value="multi-hats">Seçili Hatlar</option><option value="multi-trafos">Seçili Trafolar</option><option value="all-hats">Tüm Hatlar</option><option value="all-trafos">Tüm Trafolar</option><option value="filter">Filtreli grup</option></select></label><label>Varlık <select id="alarmEntity"></select></label><label>YTM <select id="alarmYtm"><option value="">Tümü</option></select></label><label>BM <select id="alarmBm"><option value="">Tümü</option></select></label><label>TM <input id="alarmTm" placeholder="TM adı"></label><label>kV <select id="alarmKv"><option value="">Tümü</option><option>400</option><option>154</option><option>66</option></select></label><label>Eşik % <input id="alarmThreshold" type="number" min="0.1" max="500" value="90"></label><label>Histerezis % <input id="alarmHysteresis" type="number" min="0" value="2"></label><label>Kapasite <select id="alarmSeason"><option value="winter">Kış</option><option value="summer">Yaz</option></select></label><label>Kontrol aralığı <select id="alarmCheckInterval"><option value="1">1 dk</option><option value="2">2 dk</option><option value="5">5 dk</option><option value="10">10 dk</option><option value="15">15 dk</option></select></label><label>Alarm tekrarı <select id="alarmRepeat"><option value="0">Yalnız geçişte</option><option value="5">5 dk</option><option value="15">15 dk</option><option value="30">30 dk</option></select></label><label class="toggle-row"><input id="alarmNotification" type="checkbox" checked><span>Chrome bildirimi</span></label><label class="toggle-row"><input id="alarmSound" type="checkbox"><span>Sesli alarm</span></label><label class="toggle-row"><input id="alarmRuleEnabled" type="checkbox" checked><span>Aktif</span></label><button id="alarmSave" class="primary">Kuralı Kaydet</button><button id="alarmEditCancel" type="button">Düzenlemeyi İptal Et</button><button id="alarmRuleCopy" type="button">Kuralı Kopyala</button></div><p id="alarmRulePreview" class="workspace-note"></p><p id="alarmRuleHint" class="workspace-note"></p></section><section class="alarm-card"><h2>Kurallar</h2><div id="alarmRules"></div></section></div>
     <section class="alarm-card"><h2>Aktif alarmlar</h2><div id="alarmActive"></div></section>
     <div class="alarm-columns"><section class="alarm-card"><h2>Alarm olayları</h2><button id="alarmEventsCsv">Alarm geçmişi CSV</button><div id="alarmEvents" class="alarm-list"></div></section><section class="alarm-card"><h2>Son 60 yenileme</h2><button id="alarmCyclesCsv">Yenileme CSV</button><div id="alarmCycles" class="alarm-list"></div><details><summary>Gelişmiş / Tanılama</summary><pre id="alarmDiagnostics"></pre></details></section></div>
+  </section>
+  <section id="webscadaSettings" class="webscada-view" aria-label="Ayarlar">
+    <div class="workspace-head"><h1>Ayarlar</h1><p>SCADA yenileme, kapasite sezonu, alarm bildirimleri ve Bara Set ayarları.</p></div>
+    <div class="settings-grid"><section class="settings-card"><h2>SCADA Otomatik Yenileme</h2><label class="toggle-row"><input id="settingsAutoRefreshEnabled" type="checkbox"><span>Aktif</span></label><label>Yenileme aralığı <select id="settingsAutoRefreshMinutes"><option value="1">1 dk</option><option value="2">2 dk</option><option value="5">5 dk</option><option value="10">10 dk</option><option value="15">15 dk</option></select></label><button id="settingsRefreshNow">Şimdi Yenile</button><p id="settingsMapStatus" class="workspace-note"></p></section><section class="settings-card"><h2>Kapasite Sezonu</h2><label><input name="settingsSeason" type="radio" value="winter"> Kış</label><label><input name="settingsSeason" type="radio" value="summer"> Yaz</label><p class="workspace-note">Harita yüklenme hesabı bu seçimi hemen kullanır; kayıtlı kurallar kendi sezonunu korur.</p></section><section class="settings-card"><h2>Alarm Bildirimleri</h2><label class="toggle-row"><input id="settingsNotifications" type="checkbox"><span>Global bildirim</span></label><label class="toggle-row"><input id="settingsSound" type="checkbox"><span>Global ses</span></label><label>Uyarı sesi <select id="settingsWarningSound"></select></label><label>Kritik sesi <select id="settingsCriticalSound"></select></label><label>Ses seviyesi <input id="settingsAlarmVolume" type="range" min="0" max="100" step="1"><span id="settingsAlarmVolumeValue"></span></label><div><button data-settings-test="warning">Test Uyarı</button> <button data-settings-test="critical">Test Kritik</button> <button data-settings-test="notification">Test Bildirim</button></div><p id="settingsNotificationStatus" class="workspace-note"></p></section><section class="settings-card"><h2>Bara Set</h2><div id="settingsBaraSetHost"></div></section></div>
   </section>
   <script src="lib/xlsx.full.min.js"></script>
   <script src="core/topology-store.js"></script>
@@ -335,11 +340,13 @@
   <script src="core/log-time.js"></script>
   <script src="core/query-normalizer.js"></script>
   <script src="core/query-chart.js"></script>
+  <script src="core/webscada-settings.js"></script>
   <script src="app.js"></script>
   <script src="core/alarm-model.js"></script>
   <script src="core/alarm-catalog.js"></script>
   <script src="core/alarm-evaluator.js"></script>
   <script src="alarm-view.js"></script>
+  <script src="settings-view.js"></script>
   <script src="map/map-common.js"></script>
   <script src="map/scada-common.js"></script>
   <script src="map/scada-client.js"></script>

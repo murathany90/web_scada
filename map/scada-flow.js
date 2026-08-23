@@ -241,14 +241,6 @@ function initScadaCard() {
     btnReport.addEventListener('click', showScadaMismatchReportModal);
   }
 
-  /* Season toggle */
-  const btnWinter = document.getElementById('btnSeasonWinter');
-  const btnSummer = document.getElementById('btnSeasonSummer');
-  if (btnWinter && btnSummer) {
-    btnWinter.addEventListener('click', () => setCapacitySeason('winter', btnWinter, btnSummer));
-    btnSummer.addEventListener('click', () => setCapacitySeason('summer', btnSummer, btnWinter));
-  }
-
   /* Floating bolt */
   const btnBolt = document.getElementById('btnScadaRanking');
   if (btnBolt) {

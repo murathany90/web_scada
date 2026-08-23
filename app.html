@@ -151,6 +151,7 @@
               <div class="scada-btns">
                 <button data-scada-btn="refresh" class="tiny scada-refresh-btn" title="Manuel Yenile"><span
                     id="scadaRefreshBtnLabel">Yenile</span></button>
+                <button id="scadaAutoRefreshStatus" class="tiny" type="button" title="Ayarlar sekmesinden değiştir">Oto 2 dk</button>
               </div>
             </div>
             <div class="scada-time-mode">
@@ -211,15 +212,8 @@
                 </div>
               </div>
             </div>
-            <div class="scada-season-toggle" id="scadaSeasonToggle" hidden>
-              <span class="scada-label">Kapasite:</span>
-              <div class="segmented segmented-mini">
-                <button id="btnSeasonWinter" class="segmented-btn active" data-season="winter">Kis</button>
-                <button id="btnSeasonSummer" class="segmented-btn" data-season="summer">Yaz</button>
-              </div>
-            </div>
             <details id="scadaFetchInfo" class="scada-fetch-card" data-map-panel="scada-fetch">
-              <summary>Son Sorgu</summary>
+              <summary>Son Sorgu <span id="scadaFetchClosedSummary">Hazır</span></summary>
               <div class="scada-fetch-head">
                 <strong>Son Sorgu</strong>
                 <span id="scadaFetchBadge" class="scada-fetch-badge is-idle">Hazir</span>
@@ -250,8 +244,11 @@
               </details>
             </details>
             <div id="scadaLejant" class="scada-lejant"></div>
-            <div id="scadaQualityChips" class="scada-quality-chips"></div>
-            <div id="scadaKalite" class="scada-quality">Kalite ozetleri burada gosterilir.</div>
+            <details class="scada-quality-card" data-map-panel="scada-quality">
+              <summary>Veri Kalitesi</summary>
+              <div id="scadaQualityChips" class="scada-quality-chips"></div>
+              <div id="scadaKalite" class="scada-quality">Kalite ozetleri burada gosterilir.</div>
+            </details>
             <details class="scada-tanilama" data-map-panel="diagnostics">
               <summary>Gelismis / Tanilama</summary>
               <div class="scada-tanilama-body">

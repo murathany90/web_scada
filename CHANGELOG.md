@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.8
+
+- Unified map theme/tile refresh, per-domain SCADA overlay preferences, cache-aware coalesced scopes, and finalized error/discard operation states.
+- Simplified the SCADA card around Settings-authoritative capacity season and transport/error visibility.
+
 ## 0.6.7
 
 - Removed production mock SCADA transport/UI paths and added a release gate for real-extension runtime packaging.

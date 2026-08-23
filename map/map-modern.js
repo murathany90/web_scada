@@ -39,6 +39,7 @@ const state = {
     showBaraSet: false,
     hatDisplayMode: 'detayli',
     scadaMapDisplayMode: 'flow',
+    scadaDisplayModes: { hat: 'flow', trafo: 'box', voltage: 'point-label' },
     kv: new Set(['66', '154', '400']),
     networkYtm: new Set(),
     searchKvPins: new Set(),
@@ -284,6 +285,7 @@ function persistMapPrefs() {
     [MAP_PREFS_KEY]: {
       theme: state.map.theme,
       scadaMapDisplayMode: state.filters.scadaMapDisplayMode,
+      scadaDisplayModes: state.filters.scadaDisplayModes,
       panelOpen: Object.fromEntries([...document.querySelectorAll('[data-map-panel]')].map(panel => [panel.dataset.mapPanel, panel.open])),
       savedAt: new Date().toISOString()
     }
@@ -310,6 +312,12 @@ function restoreMapPrefs(prefs) {
   if (prefs.theme === 'dark' || prefs.theme === 'light') state.map.theme = prefs.theme;
   if (['flow', 'heatmap', 'current', 'point', 'point-label', 'box'].includes(prefs.scadaMapDisplayMode)) {
     state.filters.scadaMapDisplayMode = prefs.scadaMapDisplayMode;
+  }
+  if (prefs.scadaDisplayModes && typeof prefs.scadaDisplayModes === 'object') {
+    ['hat', 'trafo', 'voltage'].forEach((domain) => {
+      const mode = prefs.scadaDisplayModes[domain];
+      if (['flow', 'heatmap', 'current', 'point', 'point-label', 'box'].includes(mode)) state.filters.scadaDisplayModes[domain] = mode;
+    });
   }
   state.ui.panelOpen = prefs.panelOpen || {};
 }
@@ -532,6 +540,7 @@ function handleVisibilityFiltersChanged() {
   if (typeof refreshScadaVisibleSummary === 'function') refreshScadaVisibleSummary();
   if (typeof refreshRankingTable === 'function') refreshRankingTable();
   if (typeof updateScadaCardUI === 'function') updateScadaCardUI();
+  if (state.scada.enabled && typeof queueScadaScopeFetch === 'function') queueScadaScopeFetch({ trigger: 'filter-change' });
   requestRender();
 }
 
@@ -549,10 +558,13 @@ function applyTheme(theme, persist = true) {
   if (persist) persistMapPrefs();
 }
 
-function toggleTheme() {
-  applyTheme(state.map.theme === 'dark' ? 'light' : 'dark');
+function setWebScadaTheme(theme) {
+  applyTheme(theme);
   requestRender({ forceTiles: true });
 }
+
+function toggleTheme() { setWebScadaTheme(state.map.theme === 'dark' ? 'light' : 'dark'); }
+window.setWebScadaTheme = setWebScadaTheme;
 
 function restoreBaraSet(cache) {
   const unmatchedNames = [];

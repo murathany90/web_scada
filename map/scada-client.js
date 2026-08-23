@@ -97,12 +97,25 @@ function appendScadaHistoryBuffer(historyValue, entry, limit = SCADA_CONFIG.HIST
   return buffer;
 }
 
+function formatScadaLogDetail(detail) {
+  if (detail == null) return undefined;
+  if (typeof detail === 'string') return detail.slice(0, 400);
+  try {
+    const safe = JSON.stringify(detail, (key, value) => {
+      if (/password|cookie|token|authorization/i.test(key)) return '[redacted]';
+      if (Array.isArray(value) && value.length > 12) return [...value.slice(0, 12), `… +${value.length - 12}`];
+      return value;
+    });
+    return safe.slice(0, 400);
+  } catch (_) { return '[detail unavailable]'; }
+}
+
 function scadaLog(level, message, detail) {
   const entry = {
     ts: new Date().toISOString(),
     level,
     message,
-    detail: detail != null ? String(detail).slice(0, 400) : undefined
+    detail: formatScadaLogDetail(detail)
   };
   if (!state.scada) return;
   state.scada.logs.push(entry);

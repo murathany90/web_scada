@@ -119,7 +119,7 @@ body {
 .sidebar-toggle {
   position: absolute;
   top: 12px;
-  right: -40px;
+  left: 320px;
   width: 40px;
   height: 40px;
   background: var(--accent);
@@ -129,11 +129,17 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 31;
+  transition: left 0.3s ease;
   color: #fff;
   box-shadow: 4px 0 8px rgba(0,0,0,0.15);
 }
 
-.sidebar.collapsed .sidebar-toggle svg {
+.sidebar.collapsed + .sidebar-toggle {
+  left: 0;
+}
+
+.sidebar.collapsed + .sidebar-toggle svg {
   transform: rotate(180deg);
 }
 

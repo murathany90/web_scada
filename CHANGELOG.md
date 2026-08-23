@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.12
+
+- Normalized background map responses through the V2 metric contract, rejected invalid/zero-match snapshots atomically, and retained the last-good live flow during temporary failures.
+- Switched map mode to one fixed header-relative viewport and made the sidebar control an in-map sibling instead of an overflowing sidebar child.
+
 ## 0.6.11
 
 - Applied service-worker map refresh snapshots directly to the V2 metric/flow state and refreshed the open SCADA ranking panel.

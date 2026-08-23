@@ -1882,7 +1882,7 @@
     return next;
   }
 
-  function buildVisibleSummary(scope, metricMap) {
+  function buildVisibleSummary(scope, metricMap, options = {}) {
     const presentationEntries = scope.domain === 'bara'
       ? getVoltagePanelRepresentatives(metricMap)
       : scope.entities.map((entity) => ({
@@ -1948,7 +1948,7 @@
       }
       summary.matched += 1;
     });
-    state.scada.visibleSummary = summary;
+    if (options.commit !== false) state.scada.visibleSummary = summary;
     return summary;
   }
 
@@ -2256,11 +2256,30 @@
     }
   }
 
+  function backgroundMetricEntries(rows) {
+    return [...rows.entries()].filter(([key, row]) => String(key) === `${String(row?.measurementId || row?.sinsid || '')}|${String(row?.elementName || '')}`);
+  }
+
+  function previewBackgroundSnapshot(rows, scope) {
+    const modeConfig = getModeConfig(scope.mode); const metrics = new Map();
+    scope.entities.forEach((entity) => {
+      const type = modeConfig.domain === 'bara' ? 'bara' : modeConfig.domain;
+      const record = buildEntityMetricRecord(type, entity, modeConfig, rows);
+      metrics.set(record.entityKey, record);
+    });
+    return buildVisibleSummary(scope, metrics, { commit: false });
+  }
+
+  function rejectBackgroundMapResult(scope, reason, details = {}) {
+    chrome.runtime?.sendMessage?.({ type: 'DIAG_LOG_APPEND', payload: { subsystem: 'map', event: 'MAP_BACKGROUND_APPLY_REJECTED', level: 'warn', message: `Arka plan sonucu uygulanmadı: ${reason}.`, mode: scope.mode, scopeSummary: scope.filterKey, reason, rows: details.rows || 0, idIntersection: details.idIntersection || 0, previousMatched: details.previousMatched || 0, visibleMatched: details.visibleMatched || 0, visibleTotal: details.visibleTotal || 0, result: 'REJECTED' } }).catch(() => {});
+    return { ok: false, skipped: true, reason };
+  }
+
   async function applyBackgroundMapResult(result) {
     if (!result?.data || state.scada.timeMode === 'historical') return { ok: false, skipped: true };
     const scope = getCurrentScadaScope(); const saved = result.scope || {}; if (saved.filterKey !== scope.filterKey || saved.mode !== scope.mode || [...(saved.measurementIds || [])].sort().join(',') !== [...scope.measurementIds].sort().join(',')) { chrome.runtime?.sendMessage?.({ type: 'DIAG_LOG_APPEND', payload: { subsystem: 'map', event: 'SKIPPED_SCOPE_MISMATCH', level: 'warn', message: 'Arka plan snapshot mevcut harita kapsamıyla eşleşmedi.', mode: scope.mode, scopeSummary: scope.filterKey, measurementCount: scope.measurementIds.length, result: 'SKIPPED_SCOPE_MISMATCH' } }).catch(() => {}); return { ok: false, skipped: true, reason: 'scope-mismatch' }; }
-    const rows = normalizeScadaRows(result.data); if (!rows.size) return { ok: false, skipped: true, reason: 'empty' };
-    state.scada.currentScope = scope; applyGenericScadaSnapshot(rows, scope); state.scada.lastFetchAt = new Date(result.at || Date.now()); state.scada.sourceKind = 'live'; await persistScadaDashboardSnapshot({ force: true, source: 'background-worker' }); if (typeof requestScadaOverlayRender === 'function') requestScadaOverlayRender(); if (typeof updateScadaCardUI === 'function') updateScadaCardUI(); if (typeof refreshRankingTable === 'function') refreshRankingTable(); chrome.runtime?.sendMessage?.({ type: 'DIAG_LOG_APPEND', payload: { subsystem: 'map', event: 'MAP_BACKGROUND_RESULT_APPLIED', message: 'Arka plan snapshot V2 haritaya uygulandı.', mode: scope.mode, scopeSummary: scope.filterKey, entityCount: scope.entities.length, measurementCount: rows.size, returnedRows: rows.size, result: 'OK' } }).catch(() => {}); setScadaStatusMessage('SCADA arka plan snapshot uygulandı.', 'info'); return { ok: true, rows: rows.size };
+    const rows = SCADA_COMMON.normalizeMetricRows(result.data, { elementNames: scope.elementNames }); const entries = backgroundMetricEntries(rows); const requested = new Set(scope.measurementIds.map(String)); const idIntersection = new Set(entries.map(([, row]) => String(row.measurementId || row.sinsid || '')).filter(id => requested.has(id))).size; const elementsMatch = entries.every(([, row]) => scope.elementNames.includes(String(row.elementName || ''))); const previousMatched = Number(state.scada.visibleSummary?.matched || state.scada.matchedLines || 0); if (!entries.length) return rejectBackgroundMapResult(scope, 'empty-normalized-rows', { rows: entries.length, previousMatched }); if (!idIntersection) return rejectBackgroundMapResult(scope, 'no-requested-id-intersection', { rows: entries.length, idIntersection, previousMatched }); if (!elementsMatch) return rejectBackgroundMapResult(scope, 'element-mismatch', { rows: entries.length, idIntersection, previousMatched }); const preview = previewBackgroundSnapshot(rows, scope); if (!preview.matched && !preview.available) return rejectBackgroundMapResult(scope, 'zero-visible-match', { rows: entries.length, idIntersection, previousMatched, visibleMatched: preview.matched, visibleTotal: preview.total });
+    state.scada.currentScope = scope; const visibleSummary = applyGenericScadaSnapshot(rows, scope); state.scada.lastFetchAt = new Date(result.at || Date.now()); state.scada.sourceKind = 'live'; await persistScadaDashboardSnapshot({ force: true, source: 'background-worker' }); if (typeof requestScadaOverlayRender === 'function') requestScadaOverlayRender(); if (typeof updateScadaCardUI === 'function') updateScadaCardUI(); if (typeof refreshRankingTable === 'function') refreshRankingTable(); chrome.runtime?.sendMessage?.({ type: 'DIAG_LOG_APPEND', payload: { subsystem: 'map', event: 'MAP_BACKGROUND_RESULT_APPLIED', message: 'Arka plan snapshot V2 haritaya uygulandı.', mode: scope.mode, scopeSummary: scope.filterKey, entityCount: scope.entities.length, measurementCount: entries.length, returnedRows: entries.length, rows: entries.length, normalizedRows: entries.length, visibleMatched: visibleSummary.matched, visibleTotal: visibleSummary.total, available: visibleSummary.available, missing: visibleSummary.missing, dataTimestamp: state.scada.lastDataTimestamp?.toISOString?.() || null, result: 'OK' } }).catch(() => {}); setScadaStatusMessage('SCADA arka plan snapshot uygulandı.', 'info'); return { ok: true, rows: entries.length, visibleSummary };
   }
 
   function handleDashboardMapSlotActive(payload = {}) {
@@ -2359,6 +2378,10 @@
   }
 
   markScadaFlowsUnavailable = function (reason, errorType) {
+    if (isScadaV2RuntimeActive() && hasUsableScadaSnapshot()) {
+      preserveScadaSnapshotOnError(reason, errorType);
+      return false;
+    }
     state.scada.error = reason || 'SCADA verisi alinamadi.';
     state.scada.errorType = errorType || SCADA_ERROR.TRANSPORT_ERROR;
 
@@ -2558,7 +2581,16 @@
   function preserveScadaSnapshotOnError(reason, errorType) {
     state.scada.error = reason || 'SCADA verisi alinamadi.';
     state.scada.errorType = errorType || SCADA_ERROR.NETWORK_ERROR;
-    setScadaStatusMessage(`${state.scada.error} Son basarili goruntu korundu.`, 'warn');
+    const timestamp = state.scada.lastDataTimestamp || state.scada.lastFetchAt;
+    const time = timestamp ? new Date(timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '-';
+    setScadaStatusMessage(`Yeni veri alınamadı · son başarılı veri ${time} gösteriliyor`, 'warn');
+  }
+
+  function hasUsableScadaSnapshot() {
+    return state.scada.timeMode === 'live'
+      && state.scada.entityMetricsByKey instanceof Map
+      && state.scada.entityMetricsByKey.size > 0
+      && Boolean(state.scada.lastDataTimestamp || state.scada.lastFetchAt);
   }
 
   function getScadaScopeSignature(scope) {

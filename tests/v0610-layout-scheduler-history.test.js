@@ -9,7 +9,7 @@ const source = file => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('map viewport uses its header-relative container instead of inner 100vh heights', () => {
   const appCss = source('app.css'); const mapCss = source('map/map-modern.css');
-  assert.match(appCss, /#webscadaMap\.active \{ height:calc\(100dvh - 54px\); min-height:0; \}/);
+  assert.match(appCss, /#webscadaMap\.active \{ position:fixed; top:54px; right:0; bottom:0; left:0; height:auto; min-height:0; overflow:hidden; \}/);
   assert.match(mapCss, /\.layout \{[\s\S]*height: 100%;[\s\S]*min-height: 0/);
   assert.match(mapCss, /\.map-viewport \{[\s\S]*height: 100%;[\s\S]*min-height: 0/);
   assert.doesNotMatch(mapCss, /height: 100vh/);

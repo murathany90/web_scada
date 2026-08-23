@@ -134,6 +134,7 @@
   globalThis.__TPYS_SCADA_V2_RUNTIME_ACTIVE__ = true;
   const SCADA_DASHBOARD_SNAPSHOT_KEY = 'scadaDashboardSnapshot';
   const SCADA_BACKGROUND_REFRESH_STATE_KEY = 'scadaBackgroundRefreshState';
+  const scadaTransientStorage = () => chrome.storage.session || chrome.storage.local;
   state.scada.visibleSummary = state.scada.visibleSummary || {
     total: 0,
     matched: 0,
@@ -2200,7 +2201,7 @@
       if (typeof chrome === 'undefined' || !chrome.storage?.local?.set) return { ok: false, skipped: true };
       const scope = state.scada.currentScope || getCurrentScadaScope();
       const snapshot = serializeScadaDashboardSnapshot(options);
-      await chrome.storage.local.set({ [SCADA_DASHBOARD_SNAPSHOT_KEY]: snapshot });
+      await scadaTransientStorage().set({ [SCADA_DASHBOARD_SNAPSHOT_KEY]: snapshot });
       // Store only minimal metadata for background refresh - no entities/geometry
       const backgroundRefreshScope = {
         mode: scope.mode,
@@ -2243,7 +2244,7 @@
       if (state.scada.timeMode === 'historical') {
         return { ok: false, skipped: true, reason: 'historical-mode' };
       }
-      const stored = await chrome.storage.local.get(SCADA_DASHBOARD_SNAPSHOT_KEY);
+      const stored = await scadaTransientStorage().get(SCADA_DASHBOARD_SNAPSHOT_KEY);
       const snapshot = stored?.[SCADA_DASHBOARD_SNAPSHOT_KEY];
       const restored = restoreScadaDashboardSnapshot(snapshot);
       if (restored.ok) {
@@ -2307,7 +2308,7 @@
     state.scada.ambiguousRows = [];
     refreshScadaVisibleSummary();
     restoreScadaDashboardSnapshotFromStorage();
-    if (typeof chrome !== 'undefined' && chrome.storage?.local?.get) chrome.storage.local.get('webscadaBackgroundMapResult').then(data => applyBackgroundMapResult(data.webscadaBackgroundMapResult));
+    if (typeof chrome !== 'undefined' && chrome.storage?.local?.get) scadaTransientStorage().get('webscadaBackgroundMapResult').then(data => applyBackgroundMapResult(data.webscadaBackgroundMapResult));
     if (globalThis.WebSCADASettings) WebSCADASettings.load().then(settings => { state.scada.autoRefresh = settings.autoRefreshEnabled; state.scada.autoRefreshMinutes = settings.autoRefreshMinutes; state.scada.capacitySeason = settings.capacitySeason; if (typeof updateSharedMapStatus === 'function') updateSharedMapStatus(); if (state.scada.enabled && state.scada.autoRefresh) startScadaAutoScheduler(); });
     scadaLog('info', `SCADA V2 modulu hazir. ${state.network.hatLines.length} hat, ${state.network.trafos.length} trafo, ${state.network.baraNodes.length} bara yuklendi.`);
   };
@@ -7197,7 +7198,7 @@ function _formatHistoryAxisLabel(timestampMs) {
         }
       });
     }
-    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.webscadaBackgroundMapResult) void applyBackgroundMapResult(changes.webscadaBackgroundMapResult.newValue); });
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) chrome.storage.onChanged.addListener((changes, area) => { if ((area === 'session' || area === 'local') && changes.webscadaBackgroundMapResult) void applyBackgroundMapResult(changes.webscadaBackgroundMapResult.newValue); });
   }
 
   function _formatTimeBadge(valueMs) {

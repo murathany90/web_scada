@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.13
+
+- Bounded and batched diagnostic storage, compacted diagnostic request IDs, recovered safely from quota pressure, and moved transient SCADA cache/snapshot data to session storage.
+- Committed alarm runtime before notification/sound side effects, made notification failures controlled, and made background alarm monitoring automatic for enabled rules.
+- Added bounded three-attempt map auto-refresh retries while preserving last-good map state and the next scheduled cycle.
+
 ## 0.6.12
 
 - Normalized background map responses through the V2 metric contract, rejected invalid/zero-match snapshots atomically, and retained the last-good live flow during temporary failures.

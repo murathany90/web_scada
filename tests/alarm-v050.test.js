@@ -49,7 +49,7 @@ test('scheduler uses one persisted Chrome alarm and never a page interval', asyn
   const state = { webscadaAlarmSettings: { backgroundMonitoringEnabled: false }, webscadaAlarmRules: [] }; const alarms = new Map();
   global.chrome = { storage: { local: { get: async keys => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map(key => [key, state[key]])), set: async value => Object.assign(state, value) } }, alarms: { get: async name => alarms.get(name), create: async (name, info) => alarms.set(name, { name, ...info }), clear: async name => alarms.delete(name), onAlarm: { addListener() {} } } };
   delete require.cache[require.resolve('../background/alarm-scheduler.js')]; const scheduler = require('../background/alarm-scheduler.js');
-  assert.equal(await scheduler.ensureBackgroundMonitorAlarm(), false); assert.equal(alarms.size, 0);
+  assert.equal(await scheduler.ensureBackgroundMonitorAlarm(), true); assert.deepEqual(alarms.get(scheduler.NAME), { name: scheduler.NAME, periodInMinutes: 1, persistAcrossSessions: true });
   state.webscadaAlarmSettings.backgroundMonitoringEnabled = true; state.webscadaAlarmRules = [{ enabled: true }]; assert.equal(await scheduler.ensureBackgroundMonitorAlarm(), true); assert.deepEqual(alarms.get(scheduler.NAME), { name: scheduler.NAME, periodInMinutes: 1, persistAcrossSessions: true });
   const source = fs.readFileSync(path.join(__dirname, '..', 'background', 'alarm-scheduler.js'), 'utf8'); assert.doesNotMatch(source, /setInterval/);
 });

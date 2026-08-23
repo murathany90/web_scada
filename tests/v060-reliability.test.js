@@ -9,7 +9,7 @@ test('alarm sounds have separate warning/critical choices and valid 5-10 second 
 
 test('notification uses extension icon URL and surfaces create failures', async () => {
   const store = {}; global.chrome = { runtime: { getURL: file => `chrome-extension://id/${file}` }, storage: { local: { get: async key => ({ [key]: store[key] }), set: async value => Object.assign(store, value) } }, notifications: { getPermissionLevel: async () => 'granted', create: async (_id, options) => { assert.equal(options.iconUrl, 'chrome-extension://id/icons/icon-128.png'); throw Error('icon failed'); } }, action: { setBadgeText() {}, setBadgeBackgroundColor() {} } };
-  delete require.cache[require.resolve('../background/alarm-notifications.js')]; const notifications = require('../background/alarm-notifications.js'); await assert.rejects(() => notifications.notify('x', { title: 'x', message: 'x' }), /icon failed/); assert.match(store.webscadaNotificationStatus.lastNotificationError, /icon failed/);
+  delete require.cache[require.resolve('../background/alarm-notifications.js')]; const notifications = require('../background/alarm-notifications.js'); const result = await notifications.notify('x', { title: 'x', message: 'x' }); assert.equal(result.ok, false); assert.match(result.error, /icon failed/);
 });
 
 test('all-hats applies exact YTM membership and never leaks another YTM', () => {

@@ -461,7 +461,10 @@
     if (modeConfig.domain === 'hat') return typeof getVisibleHats === 'function' ? getVisibleHats() : [];
     if (modeConfig.domain === 'trafo') return typeof getVisibleTrafoEntities === 'function' ? getVisibleTrafoEntities() : [];
     const visibleBaras = typeof getVisibleBaras === 'function' ? getVisibleBaras() : [];
-    return visibleBaras.filter((bara) => ['154', '400'].includes(String(bara.kvBucket || bara.gerilimKv || '')));
+    const selectedKv = state.filters.kv instanceof Set
+      ? state.filters.kv
+      : new Set(['66', '154', '400']);
+    return visibleBaras.filter((bara) => selectedKv.has(String(bara.kvBucket || bara.gerilimKv || '')));
   }
 
   function getCurrentScadaScope(options = {}) {
@@ -503,9 +506,8 @@
       }
       button.classList.toggle('active', button.dataset.scadaMetric === state.filters.scadaMetric);
     });
-    // The MW/MVar row is power-mode only; capacity season is authoritative in Settings.
     const metricRow = document.getElementById('scadaMetricRow');
-    if (metricRow) metricRow.classList.toggle('hidden', modeConfig.domain === 'bara');
+    if (metricRow) metricRow.classList.remove('hidden');
   }
 
   function displayDomain(modeConfig = getModeConfig()) {
@@ -1999,11 +2001,13 @@
   function getVoltagePanelRepresentatives(metricMap = state.scada.entityMetricsByKey) {
     const candidatesByTm = new Map();
     const visibleBaras = typeof getVisibleBaras === 'function' ? getVisibleBaras() : [];
+    const selectedKv = state.filters.kv instanceof Set
+      ? state.filters.kv
+      : new Set(['66', '154', '400']);
     visibleBaras.forEach((bara) => {
-      if (!['154', '400'].includes(String(bara.kvBucket || bara.gerilimKv || ''))) return;
+      if (!selectedKv.has(String(bara.kvBucket || bara.gerilimKv || ''))) return;
       if (isTransferBaraForVoltagePanel(bara)) return;
       const record = metricMap?.get(`bara:${bara.id}`);
-      if (!record || !Number.isFinite(record.primaryValue)) return;
       const tmKey = getVoltagePanelTmKey(bara);
       const candidate = { entity: bara, record };
       if (isBetterVoltagePanelRepresentative(candidate, candidatesByTm.get(tmKey))) {
@@ -2537,8 +2541,14 @@
 
   function queueScadaScopeFetch(options = {}) {
     const pollState = state.scada.pollState = state.scada.pollState || {};
-    pollState.pendingTrigger = { triggerType: options.trigger || 'filter-change', options };
-    if (state.scada.fetchInProgress) return;
+    const scope = getCurrentScadaScope();
+    const scopeSignature = getScadaScopeSignature(scope);
+    pollState.pendingTrigger = { triggerType: options.trigger || 'filter-change', options, scopeSignature };
+    if (state.scada.fetchInProgress) {
+      requestMapScopeCancellation(scopeSignature);
+      if (scope.mode === 'voltage') scadaLog('info', 'Gerilim sorgusu bekliyor; aktif Hat sorgusu tamamlanıyor.');
+      return;
+    }
     clearTimeout(pollState.scopeDebounceTimer);
     pollState.scopeDebounceTimer = setTimeout(() => {
       const pending = pollState.pendingTrigger;
@@ -2553,6 +2563,38 @@
     setScadaStatusMessage(`${state.scada.error} Son basarili goruntu korundu.`, 'warn');
   }
 
+  function getScadaScopeSignature(scope) {
+    const filters = state.filters || {};
+    return JSON.stringify({
+      mode: scope?.mode || '',
+      domain: scope?.domain || '',
+      primaryMetric: scope?.primaryMetric || '',
+      kv: [...(filters.kv instanceof Set ? filters.kv : [])].map(String).sort(),
+      ytm: filters.ytm || filters.ytmId || '',
+      filterKey: scope?.filterKey || '',
+      elementNames: [...(scope?.elementNames || [])].map(String).sort(),
+      measurementIds: [...(scope?.measurementIds || [])].map(String).sort(),
+      timeMode: state.scada.timeMode,
+      cacheSemantics: 'map-aggregate'
+    });
+  }
+
+  function hasFreshSuccessfulScope(scopeSignature) {
+    const completedAt = Number(state.scada.lastSuccessfulScopeAt) || 0;
+    return state.scada.lastSuccessfulScopeSignature === scopeSignature
+      && completedAt > 0
+      && (Date.now() - completedAt) < Number(SCADA_CONFIG.POLL_INTERVAL_MS || 60000);
+  }
+
+  function requestMapScopeCancellation(scopeSignature) {
+    const active = state.scada.currentRequestContext;
+    if (!active?.requestId || active.scopeSignature === scopeSignature || !active.mapScopeRequest) return;
+    chrome.runtime.sendMessage({
+      type: 'SCADA_CANCEL_REQUEST',
+      payload: { requestId: active.requestId, reason: 'scope-changed' }
+    }).catch(() => {});
+  }
+
   scadaDoFetch = async function (options = {}) {
     const triggerType = options?.trigger || 'manual';
     const triggerLabel = getScadaTriggerLabel(triggerType);
@@ -2564,7 +2606,10 @@
       // Store the latest pending trigger (including filter-change, mode-change, etc.)
       // so it can be executed after the current fetch completes
       state.scada.pollState = state.scada.pollState || {};
-      state.scada.pollState.pendingTrigger = { triggerType, options };
+      const pendingScope = getCurrentScadaScope();
+      const scopeSignature = getScadaScopeSignature(pendingScope);
+      state.scada.pollState.pendingTrigger = { triggerType, options, scopeSignature };
+      requestMapScopeCancellation(scopeSignature);
       scadaLog('warn', `SCADA ${triggerLabel.toLowerCase()} yenileme istegi bekletiliyor; mevcut sorgu suruyor.`);
       if (triggerType === 'manual') setScadaStatusMessage('SCADA sorgusu zaten suruyor; filtre degisimi bekletildi.', 'warn');
       if (typeof updateScadaCardUI === 'function') updateScadaCardUI();
@@ -2572,7 +2617,18 @@
     }
 
     const scope = getCurrentScadaScope();
+    const scopeSignature = getScadaScopeSignature(scope);
+    scope.scopeSignature = scopeSignature;
     void syncBackgroundRefreshContext(scope);
+    if (triggerType !== 'manual' && !options.forceFresh && hasFreshSuccessfulScope(scopeSignature)) {
+      updateScadaFetchMeta({
+        status: 'success', stage: 'done', progressPct: 100, triggerType, triggerLabel,
+        phaseLabel: 'Hazır', phaseMessage: 'Bekleyen kapsam atlandı; mevcut başarılı görüntü aynı kapsam ve fresh.'
+      });
+      setScadaOperationMeta({ kind: 'live', stage: 'done', progressPct: 100, message: 'Bekleyen kapsam atlandı.' });
+      scadaLog('info', 'SCADA pending scope atlandı: mevcut başarılı snapshot aynı scope ve fresh.');
+      return;
+    }
     if (!scope.measurementIds.length) {
       state.scada.entityMetricsByKey = new Map();
       state.scada.measurementRowsById = new Map();
@@ -2630,6 +2686,8 @@
       domain: scopeForRequest.domain,
       primaryMetric: scopeForRequest.primaryMetric,
       timeMode: state.scada.timeMode,
+      scopeSignature,
+      mapScopeRequest: true,
       measurementIdsSignature: scopeForRequest.measurementIds.map(String).sort().join(','),
       entityCount: scopeForRequest.entities.length
     };
@@ -2715,10 +2773,26 @@ try {
               measurementIds: scope.measurementIds,
               requestId,
               triggerType,
+              scopeSignature,
+              mapScopeRequest: true,
               liveCacheSemantics: 'map-aggregate',
-              forceFresh: triggerType === 'manual'
+              forceFresh: triggerType === 'manual' || Boolean(options.forceFresh)
             }
           });
+
+      if (result?.errorType === 'CANCELLED_SCOPE_CHANGED') {
+        const finishedAt = new Date();
+        const completed = Number(result?.meta?.completedBatches) || 0;
+        const total = Number(result?.meta?.totalBatches) || 0;
+        const message = `İPTAL · Scope değişti · ${completed}/${total} batch tamamlandı`;
+        updateScadaFetchMeta({
+          status: 'cancelled', stage: 'cancelled', progressPct: 100, phaseLabel: 'İptal', phaseMessage: message,
+          finishedAt, durationMs: finishedAt.getTime() - startedAt.getTime(), error: null, errorType: 'CANCELLED_SCOPE_CHANGED'
+        });
+        setScadaOperationMeta({ requestId, stage: 'cancelled', progressPct: 100, message });
+        scadaLog('info', `SCADA sorgusu scope değiştiği için ${completed}/${total} batch sonrasında durduruldu.`);
+        return;
+      }
 
       // Stale response guard: validate request context immediately after response
       // before ANY state mutation. Covers error, empty data, historical mode, exceptions.
@@ -2746,6 +2820,11 @@ try {
         }
         
         // Discard stale response - do not apply ANY snapshot mutation.
+        updateScadaFetchMeta({
+          status: 'cancelled', stage: 'discarded', progressPct: 100,
+          phaseLabel: 'İptal', phaseMessage: 'Kapsam değiştiği için yanıt uygulanmadı.',
+          finishedAt: new Date(), error: null, errorType: 'SCOPE_CHANGED'
+        });
         setScadaOperationMeta({ requestId, stage: 'discarded', progressPct: 100, message: 'Kapsam degistigi icin yanit uygulanmadi.' });
         state.scada.currentRequestContext = null;
         state.scada.fetchInProgress = false;
@@ -2859,6 +2938,8 @@ try {
       });
 
       const visibleSummary = applyGenericScadaSnapshot(rowsByMeasurementId, scope);
+      state.scada.lastSuccessfulScopeSignature = scopeSignature;
+      state.scada.lastSuccessfulScopeAt = Date.now();
       state.scada.lastFetchAt = new Date();
       state.scada.sourceKind = 'live';
       state.scada.snapshotAt = null;
@@ -2940,6 +3021,11 @@ try {
             }
           }, 0);
         }
+        updateScadaFetchMeta({
+          status: 'cancelled', stage: 'discarded', progressPct: 100,
+          phaseLabel: 'İptal', phaseMessage: 'Kapsam değiştiği için hata yanıtı uygulanmadı.',
+          finishedAt: new Date(), error: null, errorType: 'SCOPE_CHANGED'
+        });
         setScadaOperationMeta({ requestId, stage: 'discarded', progressPct: 100, message: 'Kapsam degistigi icin hata yaniti uygulanmadi.' });
         return;
       }
@@ -3003,7 +3089,7 @@ try {
         { label: '1.20+', color: '#6b7280', count: 0 }
       ];
       getVoltagePanelRepresentatives().forEach(({ entity, record }) => {
-        if (record.sourceAmbiguous) return;
+        if (!record || record.sourceAmbiguous) return;
         const nominal = Number(entity.gerilimKv || 0) || 1;
         const pu = nominal > 0 ? record.primaryValue / nominal : null;
         if (!Number.isFinite(pu)) return;
@@ -3037,7 +3123,8 @@ try {
   function syncScadaFetchUi() {
     const fetchMeta = state.scada.fetchMeta || {};
     const op = state.scada.operationMeta || {};
-    const opActive = Boolean(op.kind && op.stage && op.stage !== 'done' && op.stage !== 'error');
+    const terminalStages = new Set(['done', 'error', 'discarded', 'cancelled']);
+    const opActive = Boolean(op.kind && op.stage && !terminalStages.has(op.stage));
     const elFetchBadge = document.getElementById('scadaFetchBadge');
     const elFetchMessage = document.getElementById('scadaFetchMessage');
     const elFetchSummary = document.getElementById('scadaFetchSummary');
@@ -3081,7 +3168,7 @@ try {
       ? 'is-loading'
       : fetchMeta.status === 'error'
         ? 'is-error'
-        : fetchMeta.status === 'success'
+          : fetchMeta.status === 'success'
           ? 'is-success'
           : 'is-idle';
 
@@ -3093,6 +3180,8 @@ try {
           ? 'Hata'
           : fetchMeta.status === 'success'
             ? 'Tamam'
+            : fetchMeta.status === 'cancelled'
+              ? 'İptal'
             : 'Hazir';
     }
     if (elFetchMessage) {
@@ -5483,6 +5572,7 @@ function _formatHistoryAxisLabel(timestampMs) {
   function buildPanelRows() {
     const filter = rankingState.entityFilter;
     const rows = [];
+    if (filter === 'voltage' && state.scada.currentScope?.mode !== 'voltage') return rows;
     const getStatusDotMeta = (record) => {
       if (!record || !Number.isFinite(record.primaryValue)) {
         return {
@@ -5511,7 +5601,9 @@ function _formatHistoryAxisLabel(timestampMs) {
         tooltip: 'Eslesme sorunu yok'
       };
     };
-    const addStatusFields = (row, record) => ({
+    const addStatusFields = (row, record) => {
+      const hasPrimaryValue = Number.isFinite(record?.primaryValue);
+      return ({
       ...(() => {
         const meta = getStatusDotMeta(record);
         return {
@@ -5520,11 +5612,11 @@ function _formatHistoryAxisLabel(timestampMs) {
         };
       })(),
       ...row,
-      staleState: record?.primaryStaleState || '',
-      timeState: record?.timeState || record?.primaryStaleState || '',
-      timeStateLabel: record?.timeStateLabel || record?.primaryStatusText || STATUS_TEXT.dead,
+      staleState: hasPrimaryValue ? (record?.primaryStaleState || '') : '',
+      timeState: hasPrimaryValue ? (record?.timeState || record?.primaryStaleState || '') : 'missing',
+      timeStateLabel: hasPrimaryValue ? (record?.timeStateLabel || record?.primaryStatusText || STATUS_TEXT.dead) : 'Veri yok',
       status: record ? getPrimaryStatusClass(record) : 'is-ambiguous',
-      statusLabel: record?.primaryStatusText || 'Eslesmedi',
+      statusLabel: hasPrimaryValue ? (record?.primaryStatusText || 'Eslesmedi') : 'Veri yok',
       ageLabel: getAgeLabel(record?.primaryTimestamp || null),
       resolutionMethod: record?.resolutionMethod || '',
       candidateConflict: Boolean(record?.candidateConflict),
@@ -5537,7 +5629,8 @@ function _formatHistoryAxisLabel(timestampMs) {
       uncertaintyLabel: record?.uncertaintyLabel || '',
       uncertaintyTooltip: record?.uncertaintyTooltip || '',
       uncertaintyDetails: record?.uncertaintyDetails || []
-    });
+      });
+    };
     if (filter === 'hat') {
       (typeof getVisibleHats === 'function' ? getVisibleHats() : []).forEach((hat) => {
         const record = state.scada.entityMetricsByKey.get(`hat:${hat.id}`);
@@ -5777,6 +5870,20 @@ function _formatHistoryAxisLabel(timestampMs) {
     const filter = rankingState.entityFilter;
     if (!rows.length) {
       const colSpan = 8;
+      if (filter === 'voltage') {
+        const pending = state.scada.pollState?.pendingTrigger;
+        const fetchMeta = state.scada.fetchMeta || {};
+        const isQueued = Boolean(pending?.scopeSignature) || state.scada.fetchInProgress;
+        const isVoltageReady = state.scada.currentScope?.mode === 'voltage' && fetchMeta.status === 'success';
+        const message = isQueued
+          ? (state.scada.fetchInProgress ? 'Gerilim verisi hazırlanıyor...' : 'Superset kuyruğunda · Gerilim verisi bekleniyor')
+          : fetchMeta.status === 'error'
+            ? (fetchMeta.error || 'Gerilim verisi alınamadı.')
+            : isVoltageReady
+              ? 'Seçili filtrede Gerilim kaydı bulunamadı.'
+              : 'Gerilim verisi hazırlanıyor...';
+        return `<tr class="ranking-empty-row"><td colspan="${colSpan}">${escapeHtml(message)}</td></tr>`;
+      }
       return `<tr class="ranking-empty-row"><td colspan="${colSpan}">Secili filtrede kayit bulunamadi.</td></tr>`;
     }
     return rows.map((row, index) => {

@@ -1,5 +1,6 @@
 const WebSCADAQuery = (() => {
   const BATCH_SIZE = 200; const LiveCache = globalThis.WebSCADALiveMeasurementCache || null;
+  const cancelledMapRequests = new Set();
   const rowsFrom = result => Array.isArray(result?.data?.result) ? result.data.result.flatMap(item => Array.isArray(item?.data) ? item.data : []) : [];
   const chunks = (ids, size = BATCH_SIZE) => ids.length ? Array.from({ length: Math.ceil(ids.length / size) }, (_, index) => ids.slice(index * size, (index + 1) * size)) : [[]]; const uniqueIds = payload => [...new Set((Array.isArray(payload?.measurementIds) ? payload.measurementIds : []).map(String).filter(Boolean))];
   const status = (payload, message, extra = {}) => { if (payload?.requestId) chrome.runtime.sendMessage({ type: 'SCADA_FETCH_PROGRESS', payload: { requestId: payload.requestId, stage: 'auth', phaseMessage: message, ...extra } }).catch(() => {}); };
@@ -12,15 +13,46 @@ const WebSCADAQuery = (() => {
     status(payload, 'Oturum dogrulaniyor...'); const hidden = await WebSCADAAuth.hiddenTabLogin(config); if (hidden.ok) { WebSCADAAuth.invalidateCsrf(config); return WebSCADAApi.fetchChart(config, request, 'hidden-tab'); }
     return { ok: false, error: hidden.error || direct.error || result.error || 'Superset oturumu acilamadi.', errorType: 'AUTH_REQUIRED', authMode: 'hidden-tab', usedFallback: true };
   }
+  function cancelMapRequest(requestId) {
+    if (requestId) cancelledMapRequests.add(String(requestId));
+  }
+  function cancelledScopeResult(payload, groups, results, startedAt) {
+    const completed = results.length;
+    return {
+      ok: false,
+      error: 'Kapsam değiştiği için sorgu durduruldu.',
+      errorType: 'CANCELLED_SCOPE_CHANGED',
+      authMode: 'none',
+      usedFallback: false,
+      meta: {
+        totalBatches: groups.length,
+        completedBatches: completed,
+        failedBatches: 0,
+        completedMeasurementIds: groups.slice(0, completed).flat(),
+        failedMeasurementIds: [],
+        telemetry: { totalFetchDurationMs: Date.now() - startedAt }
+      }
+    };
+  }
   async function fetchBatches(payload, makePayload) {
     const startedAt = Date.now(); const config = await WebSCADAAuth.loadConfig(); const groups = chunks(uniqueIds(payload), Math.max(1, Number(payload?.batchSize || BATCH_SIZE))); const results = [];
-    for (const ids of groups) { results.push(await chartFirst(config, makePayload(ids, config), payload)); status(payload, `Batch ${results.length}/${groups.length} tamamlandi.`, { stage: 'batches', completedBatches: results.length, totalBatches: groups.length }); } const entries = results.map((result, index) => ({ ids: groups[index], result }));
+    const requestId = String(payload?.requestId || '');
+    try {
+      for (const ids of groups) {
+        if (payload?.mapScopeRequest && cancelledMapRequests.has(requestId)) return cancelledScopeResult(payload, groups, results, startedAt);
+        results.push(await chartFirst(config, makePayload(ids, config), payload));
+        status(payload, `Batch ${results.length}/${groups.length} tamamlandi.`, { stage: 'batches', completedBatches: results.length, totalBatches: groups.length });
+      }
+    } finally {
+      cancelledMapRequests.delete(requestId);
+    }
+    const entries = results.map((result, index) => ({ ids: groups[index], result }));
     const successful = entries.filter(entry => entry.result.ok); const failed = entries.filter(entry => !entry.result.ok); if (failed.length && !successful.length) return { ...failed[0].result, usedFallback: failed[0].result.authMode === 'hidden-tab', meta: { totalBatches: groups.length, completedBatches: 0, failedBatches: failed.length, completedMeasurementIds: [], failedMeasurementIds: failed.flatMap(entry => entry.ids), telemetry: { totalFetchDurationMs: Date.now() - startedAt } } };
     return { ok: true, data: { result: [{ data: successful.flatMap(entry => rowsFrom(entry.result)) }] }, authMode: successful[0]?.result.authMode || 'session', usedFallback: successful.some(entry => entry.result.authMode === 'hidden-tab'), httpStatus: successful[0]?.result.httpStatus || null, meta: { totalBatches: groups.length, completedBatches: successful.length, failedBatches: failed.length, resultKind: failed.length ? (successful.length ? 'PARTIAL_NETWORK' : 'FAILED') : 'OK', completedMeasurementIds: successful.flatMap(entry => entry.ids), failedMeasurementIds: failed.flatMap(entry => entry.ids), telemetry: { initialBatchCount: groups.length, initialBatchDurationMs: Date.now() - startedAt, missingIdCount: 0, fallbackQueryCount: 0, fallbackDurationMs: 0, recoveredRows: 0, totalFetchDurationMs: Date.now() - startedAt } } };
   }
   async function cachedCurrent(payload, semantics, executeNetwork, source) {
     const ids = uniqueIds(payload); const startedAt = Date.now(); const cached = LiveCache ? await LiveCache.read(ids, semantics, { forceFresh: Boolean(payload?.forceFresh) }) : { rows: [], reusedIds: [], missingIds: ids }; let network = null; let networkRows = [];
-    if (cached.missingIds.length) { network = await executeNetwork({ ...payload, measurementIds: cached.missingIds }); if (!network?.ok && !cached.rows.length) return network; if (network?.ok) networkRows = latestRows(rowsFrom(network)); if (networkRows.length && LiveCache) await LiveCache.merge(networkRows, semantics, source); }
+    if (cached.missingIds.length) { network = await executeNetwork({ ...payload, measurementIds: cached.missingIds }); if (network?.errorType === 'CANCELLED_SCOPE_CHANGED') return network; if (!network?.ok && !cached.rows.length) return network; if (network?.ok) networkRows = latestRows(rowsFrom(network)); if (networkRows.length && LiveCache) await LiveCache.merge(networkRows, semantics, source); }
     const combined = latestRows([...cached.rows, ...networkRows]); const meta = { ...(network?.meta || {}), cacheSemantics: semantics, cacheReuseCount: cached.reusedIds.length, networkMeasurementIdCount: cached.missingIds.length, totalBatches: Number(network?.meta?.totalBatches || (cached.missingIds.length ? 1 : 0)), completedBatches: Number(network?.meta?.completedBatches || 0), failedBatches: Number(network?.meta?.failedBatches || (!network && 0)), failedMeasurementIds: network?.meta?.failedMeasurementIds || [], telemetry: { ...(network?.meta?.telemetry || {}), totalFetchDurationMs: Date.now() - startedAt } };
     return { ok: true, data: { result: [{ data: combined }] }, authMode: network?.authMode || 'cache', usedFallback: Boolean(network?.usedFallback), httpStatus: network?.httpStatus || null, meta };
   }
@@ -29,6 +61,6 @@ const WebSCADAQuery = (() => {
   function executeHistorySeries(payload) { const request = { ...payload, queryMode: payload?.queryMode || 'timeseries' }; return fetchBatches(request, (ids, config) => ({ ...request, measurementIds: ids, chartPayload: WebSCADAApi.historyPayload(config, { ...request, measurementIds: ids }, ids) })); }
   function pickSnapshot(rows, at, ids) { const requested = new Set(ids), best = new Map(); rows.forEach(row => { const id = idOf(row), time = timestampOf(row); if (!id || (requested.size && !requested.has(id)) || !Number.isFinite(time) || time > at) return; const key = `${id}|${elementOf(row)}`; if (!best.has(key) || timestampOf(best.get(key)) < time) best.set(key, row); }); return [...best.values()]; }
   async function executeHistoricalSnapshot(payload) { const at = Number(payload?.at); if (!Number.isFinite(at)) return { ok: false, error: 'Gecmis an (at) eksik veya gecersiz.', errorType: 'INVALID_PAYLOAD', authMode: 'none', usedFallback: false }; const windowMs = Math.max(60000, Number(payload?.windowMs || payload?.toleranceMs || 600000)), startTime = at - windowMs; const raw = await executeHistorySeries({ ...payload, startTime, endTime: at, queryMode: 'raw' }); if (!raw.ok) return raw; const ids = uniqueIds(payload); let source = rowsFrom(raw), rows = pickSnapshot(source, at, ids), missing = ids.filter(id => !rows.some(row => idOf(row) === id)), recovered = false; if (missing.length) { const fallback = await executeHistorySeries({ ...payload, measurementIds: missing, startTime: at - 86400000, endTime: at, queryMode: 'raw' }); if (fallback.ok) { source = source.concat(rowsFrom(fallback)); rows = pickSnapshot(source, at, ids); missing = ids.filter(id => !rows.some(row => idOf(row) === id)); recovered = true; } } return { ...raw, data: { result: [{ data: rows }] }, meta: { ...raw.meta, at, windowStartMs: startTime, windowEndMs: at, requestedIds: ids, matchedIds: [...new Set(rows.map(idOf))], missingIds: missing, recoveredViaFallback: recovered } }; }
-  return { executeLiveScada, executeAlarmCurrentScada, executeHistorySeries, executeHistoricalSnapshot, executeWorkspaceQuery: payload => executeHistorySeries({ ...payload, queryMode: 'timeseries' }), fetchBatches, pickSnapshot, latestRows, timestampOf, chartFirst };
+  return { executeLiveScada, executeAlarmCurrentScada, executeHistorySeries, executeHistoricalSnapshot, executeWorkspaceQuery: payload => executeHistorySeries({ ...payload, queryMode: 'timeseries' }), fetchBatches, pickSnapshot, latestRows, timestampOf, chartFirst, cancelMapRequest };
 })();
 if (typeof module === 'object' && module.exports) module.exports = WebSCADAQuery;

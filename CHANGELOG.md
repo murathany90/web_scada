@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.9
+
+- Kept the SCADA metric selector visible in voltage mode, added 66 kV voltage scope/overlay support, and made voltage panel waiting/no-data states explicit.
+- Added canonical map-scope duplicate skipping and cooperative batch-boundary cancellation without changing the single Superset coordinator or 200-ID batches.
+
 ## 0.6.8
 
 - Unified map theme/tile refresh, per-domain SCADA overlay preferences, cache-aware coalesced scopes, and finalized error/discard operation states.

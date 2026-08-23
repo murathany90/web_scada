@@ -549,12 +549,11 @@
       const candidate = { bara, record, visual: getMetricVisual('bara', bara) };
       if (isBetterVoltageCandidate(candidate, byLevel.get(levelKey))) byLevel.set(levelKey, candidate);
     });
-    return ['400', '154'].map((levelKey) => byLevel.get(levelKey)).filter(Boolean);
+    return ['400', '154', '66'].map((levelKey) => byLevel.get(levelKey)).filter(Boolean);
   }
 
   function buildVoltageOverlayGroups() {
-    const visibleBaras = getVisibleBaras()
-      .filter((bara) => ['154', '400'].includes(String(bara.kvBucket || bara.gerilimKv || '')));
+    const visibleBaras = getVisibleBaras();
     const byTmId = new Map();
     visibleBaras.forEach((bara) => {
       const tm = bara.tm || getEntityTm(bara);

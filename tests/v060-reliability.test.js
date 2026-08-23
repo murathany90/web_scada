@@ -18,7 +18,7 @@ test('all-hats applies exact YTM membership and never leaks another YTM', () => 
 });
 
 test('settings keep v060 defaults and normalise persisted values', () => {
-  assert.deepEqual(settings.normalize({}), settings.DEFAULTS); const saved = settings.normalize({ autoRefreshMinutes: 99, capacitySeason: 'summer', alarmVolume: 140, warningSound: 'wrong.wav' }); assert.equal(saved.autoRefreshMinutes, 2); assert.equal(saved.capacitySeason, 'summer'); assert.equal(saved.alarmVolume, 100); assert.equal(saved.warningSound, settings.DEFAULTS.warningSound);
+  assert.deepEqual(settings.normalize({}), settings.DEFAULTS); const saved = settings.normalize({ autoRefreshMinutes: 99, capacitySeason: 'summer', alarmVolume: 140, warningSound: 'wrong.wav' }); assert.equal(saved.autoRefreshMinutes, 3); assert.equal(saved.capacitySeason, 'summer'); assert.equal(saved.alarmVolume, 100); assert.equal(saved.warningSound, settings.DEFAULTS.warningSound);
 });
 
 test('alarm edit UI restores severity and all rule filters while previewing candidates', () => {

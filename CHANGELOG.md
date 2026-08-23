@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.10
+
+- Normalized map-only viewport sizing, responsive floating panels, and the sidebar toggle position under the global header.
+- Added 3-minute whole-minute Chrome-alarm cadence with real `nextScheduledAt` status, one controlled network retry, and independent Hat voltage history metadata.
+
 ## 0.6.9
 
 - Kept the SCADA metric selector visible in voltage mode, added 66 kV voltage scope/overlay support, and made voltage panel waiting/no-data states explicit.

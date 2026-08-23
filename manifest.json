@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WebSCADA",
-  "version": "0.6.9",
+  "version": "0.6.10",
   "description": "TEIAS topology and Superset SCADA map workspace.",
   "permissions": ["storage", "tabs", "scripting", "alarms", "notifications", "offscreen"],
   "host_permissions": [

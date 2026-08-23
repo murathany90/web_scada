@@ -68,7 +68,7 @@ html[data-theme="dark"] {
 
 html, body {
   margin: 0;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
@@ -83,13 +83,16 @@ body {
 
 .layout {
   display: flex;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
 .sidebar {
   width: 320px;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -108,13 +111,14 @@ body {
 
 .sidebar-inner {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
 .sidebar-toggle {
   position: absolute;
-  top: 18px;
+  top: 12px;
   right: -40px;
   width: 40px;
   height: 40px;
@@ -471,6 +475,9 @@ button.tiny {
   position: relative;
   flex-grow: 1;
   min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: var(--map-bg);
 }
 
@@ -561,7 +568,8 @@ button.tiny {
 .map-viewport {
   position: relative;
   width: 100%;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   cursor: grab;
 }
@@ -674,7 +682,7 @@ html[data-theme="dark"] .bara-set-label-box {
   z-index: 780;
   width: 320px;
   max-width: calc(100vw - 380px);
-  max-height: calc(100vh - 36px);
+  max-height: calc(100% - 36px);
   overflow: auto;
   padding: 12px;
   border-radius: 18px;
@@ -1300,7 +1308,8 @@ html[data-theme="dark"] .bara-set-label-box {
   bottom: 72px;
   width: 484px;
   max-width: 100vw;
-  height: 640px;
+  height: min(640px, calc(100% - 84px));
+  max-height: calc(100% - 84px);
   background: var(--surface-elevated);
   color: var(--text-strong);
   border-radius: 20px 0 0 20px;

@@ -34,21 +34,32 @@ const WebSCADAQuery = (() => {
       }
     };
   }
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const retryableNetworkFailure = result => Boolean(!result?.ok
+    && !['AUTH_REQUIRED', 'CANCELLED_SCOPE_CHANGED', 'INVALID_PAYLOAD'].includes(String(result?.errorType || ''))
+    && /network|failed to fetch/i.test(`${result?.errorType || ''} ${result?.error || ''}`));
   async function fetchBatches(payload, makePayload) {
     const startedAt = Date.now(); const config = await WebSCADAAuth.loadConfig(); const groups = chunks(uniqueIds(payload), Math.max(1, Number(payload?.batchSize || BATCH_SIZE))); const results = [];
-    const requestId = String(payload?.requestId || '');
+    const requestId = String(payload?.requestId || ''); let retriedBatches = 0;
     try {
       for (const ids of groups) {
         if (payload?.mapScopeRequest && cancelledMapRequests.has(requestId)) return cancelledScopeResult(payload, groups, results, startedAt);
         results.push(await chartFirst(config, makePayload(ids, config), payload));
+        let batchResult = results[results.length - 1];
+        if (retryableNetworkFailure(batchResult)) {
+          retriedBatches += 1; await wait(1000);
+          if (payload?.mapScopeRequest && cancelledMapRequests.has(requestId)) return cancelledScopeResult(payload, groups, results, startedAt);
+          batchResult = await chartFirst(config, makePayload(ids, config), payload);
+        }
+        results[results.length - 1] = batchResult;
         status(payload, `Batch ${results.length}/${groups.length} tamamlandi.`, { stage: 'batches', completedBatches: results.length, totalBatches: groups.length });
       }
     } finally {
       cancelledMapRequests.delete(requestId);
     }
     const entries = results.map((result, index) => ({ ids: groups[index], result }));
-    const successful = entries.filter(entry => entry.result.ok); const failed = entries.filter(entry => !entry.result.ok); if (failed.length && !successful.length) return { ...failed[0].result, usedFallback: failed[0].result.authMode === 'hidden-tab', meta: { totalBatches: groups.length, completedBatches: 0, failedBatches: failed.length, completedMeasurementIds: [], failedMeasurementIds: failed.flatMap(entry => entry.ids), telemetry: { totalFetchDurationMs: Date.now() - startedAt } } };
-    return { ok: true, data: { result: [{ data: successful.flatMap(entry => rowsFrom(entry.result)) }] }, authMode: successful[0]?.result.authMode || 'session', usedFallback: successful.some(entry => entry.result.authMode === 'hidden-tab'), httpStatus: successful[0]?.result.httpStatus || null, meta: { totalBatches: groups.length, completedBatches: successful.length, failedBatches: failed.length, resultKind: failed.length ? (successful.length ? 'PARTIAL_NETWORK' : 'FAILED') : 'OK', completedMeasurementIds: successful.flatMap(entry => entry.ids), failedMeasurementIds: failed.flatMap(entry => entry.ids), telemetry: { initialBatchCount: groups.length, initialBatchDurationMs: Date.now() - startedAt, missingIdCount: 0, fallbackQueryCount: 0, fallbackDurationMs: 0, recoveredRows: 0, totalFetchDurationMs: Date.now() - startedAt } } };
+    const successful = entries.filter(entry => entry.result.ok); const failed = entries.filter(entry => !entry.result.ok); if (failed.length && !successful.length) return { ...failed[0].result, usedFallback: failed[0].result.authMode === 'hidden-tab', meta: { totalBatches: groups.length, completedBatches: 0, failedBatches: failed.length, retriedBatches, completedMeasurementIds: [], failedMeasurementIds: failed.flatMap(entry => entry.ids), telemetry: { totalFetchDurationMs: Date.now() - startedAt } } };
+    return { ok: true, data: { result: [{ data: successful.flatMap(entry => rowsFrom(entry.result)) }] }, authMode: successful[0]?.result.authMode || 'session', usedFallback: successful.some(entry => entry.result.authMode === 'hidden-tab'), httpStatus: successful[0]?.result.httpStatus || null, meta: { totalBatches: groups.length, completedBatches: successful.length, failedBatches: failed.length, retriedBatches, resultKind: failed.length ? (successful.length ? 'PARTIAL_NETWORK' : 'FAILED') : 'OK', completedMeasurementIds: successful.flatMap(entry => entry.ids), failedMeasurementIds: failed.flatMap(entry => entry.ids), telemetry: { initialBatchCount: groups.length, initialBatchDurationMs: Date.now() - startedAt, missingIdCount: 0, fallbackQueryCount: 0, fallbackDurationMs: 0, recoveredRows: 0, totalFetchDurationMs: Date.now() - startedAt } } };
   }
   async function cachedCurrent(payload, semantics, executeNetwork, source) {
     const ids = uniqueIds(payload); const startedAt = Date.now(); const cached = LiveCache ? await LiveCache.read(ids, semantics, { forceFresh: Boolean(payload?.forceFresh) }) : { rows: [], reusedIds: [], missingIds: ids }; let network = null; let networkRows = [];

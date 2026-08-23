@@ -2182,7 +2182,11 @@
   async function syncBackgroundRefreshContext(scope = state.scada.currentScope || getCurrentScadaScope()) {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage || !scope?.measurementIds?.length) return;
     const payload = { baseUrl: SCADA_CONFIG.SUPERSET_ORIGIN, dashboardId: SCADA_CONFIG.DASHBOARD_ID, chartSliceId: SCADA_CONFIG.CHART_SLICE_ID, datasourceId: SCADA_CONFIG.DATASOURCE_ID, timeRange: SCADA_CONFIG.LIVE_WINDOW_TIME_RANGE, kvFilters: [], tearFilters: [], elementNames: scope.elementNames, measurementIds: scope.measurementIds, rowLimit: Math.max(SCADA_CONFIG.QUERY_ROW_LIMIT, scope.measurementIds.length * 3 || 5000) };
-    await chrome.runtime.sendMessage({ type: 'MAP_REFRESH_CONTEXT', payload: { enabled: Boolean(state.scada.enabled && state.scada.autoRefresh && state.scada.timeMode !== 'historical'), scope: { mode: scope.mode, filterKey: scope.filterKey, domain: scope.domain, primaryMetric: scope.primaryMetric, measurementIds: scope.measurementIds, elementNames: scope.elementNames }, payload } });
+    const response = await chrome.runtime.sendMessage({ type: 'MAP_REFRESH_CONTEXT', payload: { enabled: Boolean(state.scada.enabled && state.scada.autoRefresh && state.scada.timeMode !== 'historical'), scope: { mode: scope.mode, filterKey: scope.filterKey, domain: scope.domain, primaryMetric: scope.primaryMetric, measurementIds: scope.measurementIds, elementNames: scope.elementNames }, payload } });
+    if (response?.status) {
+      state.scada.backgroundRefreshStatus = response.status;
+      if (typeof updateSharedMapStatus === 'function') updateSharedMapStatus();
+    }
   }
   let lastSnapshotTime = 0;
   async function persistScadaDashboardSnapshot(options = {}) {
@@ -2268,12 +2272,8 @@
       state.scada.pollState.pendingAutoRefresh = true;
       return { ok: true, queued: true, at: payload.at || Date.now() };
     }
-    const pollState = state.scada.pollState;
-    if (!pollState.nextDueAt || pollState.nextDueAt.getTime() > Date.now()) {
-      pollState.nextDueAt = new Date(Date.now() - 1);
-    }
-    resumeScadaAutoSchedulerIfOverdue('dashboard');
-    return { ok: true, triggered: true, at: payload.at || Date.now() };
+    void syncBackgroundRefreshContext();
+    return { ok: true, scheduled: true, at: payload.at || Date.now() };
   }
 
   scadaBuildIndex = function () {
@@ -2314,7 +2314,9 @@
       pollState.nextDueAt = null;
       return;
     }
-    pollState.nextDueAt = new Date(Date.now() + Math.max(0, Number(delayMs) || 0));
+    // Chrome alarm is the sole network scheduler. The page retains no due-time
+    // estimate; it only asks the worker for the real scheduledTime.
+    pollState.nextDueAt = null;
     void syncBackgroundRefreshContext();
   }
 
@@ -2352,12 +2354,7 @@
       return;
     }
     pollState.lastVisibilityResumeAt = new Date();
-    if (!pollState.nextDueAt) {
-      scheduleNextScadaAutoTick(SCADA_CONFIG.POLL_INTERVAL_MS);
-      return;
-    }
-    const remainingMs = pollState.nextDueAt.getTime() - Date.now();
-    scheduleNextScadaAutoTick(remainingMs <= 0 ? SCADA_CONFIG.POLL_INTERVAL_MS : remainingMs);
+    scheduleNextScadaAutoTick();
   }
 
   markScadaFlowsUnavailable = function (reason, errorType) {
@@ -3124,7 +3121,8 @@ try {
     const fetchMeta = state.scada.fetchMeta || {};
     const op = state.scada.operationMeta || {};
     const terminalStages = new Set(['done', 'error', 'discarded', 'cancelled']);
-    const opActive = Boolean(op.kind && op.stage && !terminalStages.has(op.stage));
+    const enrichmentActive = Boolean(op.kind === 'enrichment' && op.stage && !terminalStages.has(op.stage));
+    const opActive = Boolean(op.kind && op.stage && !terminalStages.has(op.stage) && !enrichmentActive);
     const elFetchBadge = document.getElementById('scadaFetchBadge');
     const elFetchMessage = document.getElementById('scadaFetchMessage');
     const elFetchSummary = document.getElementById('scadaFetchSummary');
@@ -3257,7 +3255,7 @@ try {
       }
     }
     if (elEnrichHint) {
-      const showHint = opActive && op.kind === 'enrichment';
+      const showHint = enrichmentActive;
       elEnrichHint.textContent = showHint ? (op.message || 'Eksik olcumler arka planda tamamlaniyor...') : '';
       elEnrichHint.classList.toggle('hidden', !showHint);
     }
@@ -3340,7 +3338,14 @@ try {
     if (elHata) elHata.textContent = state.scada.error || '-';
     if (elAvailable) elAvailable.textContent = `${summaryAvailable}/${summary.total || 0} veri`;
     if (elEksik) elEksik.textContent = String(Math.max(0, summaryMissing));
-    if (elAutoRefresh) elAutoRefresh.textContent = state.scada.autoRefresh ? `Oto ${state.scada.autoRefreshMinutes || 2} dk` : 'Oto kapalı';
+    if (elAutoRefresh) {
+      const nextAt = state.scada.backgroundRefreshStatus?.nextScheduledAt;
+      const remainingMs = new Date(nextAt).getTime() - Date.now();
+      const seconds = Number.isFinite(remainingMs) && remainingMs >= 0 ? Math.floor(remainingMs / 1000) : null;
+      const countdown = seconds == null ? '' : ` · ${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+      elAutoRefresh.textContent = state.scada.autoRefresh ? `Oto ${state.scada.autoRefreshMinutes || 3} dk${countdown}` : 'Oto kapalı';
+      elAutoRefresh.title = nextAt ? `Sonraki yenileme: ${new Date(nextAt).toLocaleTimeString('tr-TR')}` : 'Ayarlar sekmesinden değiştir';
+    }
 
     if (elLejant) {
       const legendCounts = getMetricLegendCounts(modeConfig);
@@ -4184,30 +4189,60 @@ function _formatHistoryAxisLabel(timestampMs) {
   function resolveHatTerminalVoltageBara(entity) {
     const baras = Array.isArray(state.network?.baraNodes) ? state.network.baraNodes : [];
     const hatKv = String(entity?.kv || entity?.primaryKv || '').trim();
+    const hasVoltageMeasurement = (bara) => {
+      const metric = typeof SCADA_COMMON !== 'undefined' && SCADA_COMMON.resolveHistoryMetricsByEntity
+        ? SCADA_COMMON.resolveHistoryMetricsByEntity('bara', bara)
+        : null;
+      return Array.isArray(metric?.voltage?.measurementIds) && metric.voltage.measurementIds.length;
+    };
     const findBara = (tmName, explicitBaraId) => {
       if (explicitBaraId) {
         const exact = baras.find(b => String(b.id) === String(explicitBaraId));
-        if (exact) return { bara: exact, quality: 'exact' };
+        if (exact && !isTransferBaraForVoltagePanel(exact) && hasVoltageMeasurement(exact)) return { bara: exact, quality: 'exact', candidateCount: 1 };
       }
       if (!tmName) return { bara: null, quality: 'none' };
       const tm = String(tmName).trim();
-      const matches = baras.filter((b) => String(b.tmName || '').trim() === tm && String(b.kvBucket || b.gerilimKv || '') === hatKv);
-      if (matches.length === 1) return { bara: matches[0], quality: 'tm-kv' };
-      if (matches.length > 1 && typeof SCADA_COMMON !== 'undefined' && SCADA_COMMON.resolveHistoryMetricsByEntity) {
-          const withMeasurement = matches.filter(b => {
-              const m = SCADA_COMMON.resolveHistoryMetricsByEntity('bara', b);
-              return m?.voltage?.measurementIds?.length > 0;
-          });
-          if (withMeasurement.length === 1) {
-              return { bara: withMeasurement[0], quality: 'tm-kv' };
-          }
-      }
+      const matches = baras
+        .filter((b) => String(b.tmName || '').trim() === tm && String(b.kvBucket || b.gerilimKv || '') === hatKv)
+        .filter((b) => !isTransferBaraForVoltagePanel(b))
+        .filter(hasVoltageMeasurement)
+        .sort((left, right) => `${normalizeText(left.name)}\u0000${left.id}`.localeCompare(`${normalizeText(right.name)}\u0000${right.id}`, 'tr'));
+      if (matches.length) return { bara: matches[0], quality: matches.length === 1 ? 'tm-kv' : 'tm-kv-deterministic', candidateCount: matches.length };
       return { bara: null, quality: 'none' };
     };
     return {
       startMatch: findBara(entity?.startTm, entity?.startBaraId || entity?.startNodeId),
       endMatch: findBara(entity?.endTm, entity?.endBaraId || entity?.endNodeId)
     };
+  }
+
+  function buildHatVoltageMeasurementMeta(voltageMetrics, entity) {
+    const meta = new Map();
+    (voltageMetrics || []).forEach((vm) => {
+      const endpointTm = String(vm.bara?.tmName || (vm.side === 'start' ? entity?.startTm : entity?.endTm) || '').trim();
+      const oppositeTm = String(vm.side === 'start' ? entity?.endTm : entity?.startTm || '').trim();
+      const kv = String(vm.bara?.gerilimKv || vm.bara?.kvBucket || entity?.kv || '').trim();
+      const rows = [...(vm.bara?.scada?.voltage?.rows || []), ...(vm.metric?.rows || [])];
+      (vm.metric?.measurementIds || []).forEach((measurementId) => {
+        const candidate = rows.find((row) => String(row?.measurementId || row?.id || '') === String(measurementId)) || {};
+        const b1 = String(candidate.b1Name || endpointTm).trim();
+        const b2 = String(candidate.b2Name || '').trim();
+        const b3 = String(candidate.b3Name || oppositeTm).trim();
+        const terminals = [b1, b2, b3];
+        const terminalLabel = formatScadaTerminalLabel({ terminals, label: '' });
+        meta.set(String(measurementId), {
+          terminalSide: vm.side,
+          terminals,
+          b1, b2, b3,
+          tm: endpointTm,
+          kv,
+          source: candidate.scadaSource || candidate.source || vm.quality || 'bara-voltage',
+          candidateSlot: candidate.candidateSlot || 'primary',
+          label: terminalLabel && terminalLabel !== 'Olcum' ? terminalLabel : `${endpointTm || 'TM'} · ${kv || '-'} kV · Gerilim`
+        });
+      });
+    });
+    return meta;
   }
 
   // Fetches terminal voltage history for hat from bara measurement IDs.
@@ -4232,6 +4267,7 @@ function _formatHistoryAxisLabel(timestampMs) {
     }
     if (!voltageMetrics.length) return { series: [], nominal: true };
     const allIds = [...new Set(voltageMetrics.flatMap((v) => v.metric.measurementIds))].sort();
+    const voltageMeta = buildHatVoltageMeasurementMeta(voltageMetrics, entity);
 
     if (!state.scada.hatVoltageHistoryCache) state.scada.hatVoltageHistoryCache = new Map();
     if (!state.scada.hatVoltageHistoryPromises) state.scada.hatVoltageHistoryPromises = new Map();
@@ -4253,8 +4289,10 @@ function _formatHistoryAxisLabel(timestampMs) {
 
     const fetchPromise = (async () => {
       const diag = {
-        start: { baraMatch: startMatch, measurementIds: startIds.split(',').filter(Boolean) },
-        end: { baraMatch: endMatch, measurementIds: endIds.split(',').filter(Boolean) },
+        startTm: entity?.startTm || '', endTm: entity?.endTm || '',
+        startCandidateCount: Number(startMatch?.candidateCount) || 0,
+        endCandidateCount: Number(endMatch?.candidateCount) || 0,
+        voltageMeasurementCount: allIds.length,
         queryMode: strategy.queryMode,
         timeGrain: strategy.timeGrain,
         fromCache: false
@@ -4279,18 +4317,19 @@ function _formatHistoryAxisLabel(timestampMs) {
         const rows = SCADA_COMMON.findDataArray(result.data) || [];
         const metricList = voltageMetrics.map((v) => v.metric);
         const parsed = parseHistorySeriesByElement(rows, metricList);
-        if (entity?.type === 'hat' || entity?.kv) {
-           enrichHatHistorySeriesMetadata(parsed.series, entity);
-        }
         parsed.series.forEach((s) => {
-          const vm = voltageMetrics.find((v) => v.metric.measurementIds.includes(s.measurementId));
-          if (vm) {
-            s._voltageSide = vm.side;
-            s._voltageBaraTm = String(vm.bara?.tmName || '').trim();
-            s._voltageBaraKv = String(vm.bara?.gerilimKv || vm.bara?.kvBucket || '').trim();
-            if (vm.quality === 'exact') {
+          const metadata = voltageMeta.get(String(s.measurementId));
+          if (metadata) {
+            s.terminalSide = metadata.terminalSide;
+            s.terminals = metadata.terminals;
+            s.candidateSlot = metadata.candidateSlot;
+            s.label = metadata.label;
+            s._voltageSide = metadata.terminalSide;
+            s._voltageBaraTm = metadata.tm;
+            s._voltageBaraKv = metadata.kv;
+            if (metadata.source === 'exact') {
                s._voltageQuality = 'Gerçek — terminal/bara eşleşmesi';
-            } else if (vm.quality === 'tm-kv') {
+            } else if (metadata.source === 'tm-kv' || metadata.source === 'tm-kv-deterministic') {
                s._voltageQuality = 'Gerçek — TM+kV eşleşmesi';
             } else {
                s._voltageQuality = 'Gerçek — Bilinmeyen Eşleşme';
@@ -4302,6 +4341,7 @@ function _formatHistoryAxisLabel(timestampMs) {
         }
         diag.rowsReturned = rows.length;
         diag.parsedSeries = parsed.series.length;
+        diag.selectedSeries = parsed.series.map((series) => series.label).filter(Boolean);
         if (typeof window !== 'undefined') window._lastHatVoltageDiagnostic = diag;
         return { series: parsed.series, nominal: false };
       } catch (err) {
@@ -7117,6 +7157,10 @@ function _formatHistoryAxisLabel(timestampMs) {
           restoreScadaDashboardSnapshotFromStorage();
         } else if (message?.type === 'SCADA_FETCH_PROGRESS') {
           handleScadaFetchProgressMessage(message.payload || {});
+        } else if (message?.type === 'MAP_REFRESH_STATUS_UPDATED') {
+          state.scada.backgroundRefreshStatus = message.payload || {};
+          if (typeof updateSharedMapStatus === 'function') updateSharedMapStatus();
+          if (typeof updateScadaCardUI === 'function') updateScadaCardUI();
         }
       });
     }
@@ -7481,6 +7525,11 @@ function _formatHistoryAxisLabel(timestampMs) {
     syncScadaMapDisplayButtons();
     bindScadaTimeModeControls();
     if (state.scada.enabled && state.scada.autoRefresh) startScadaAutoScheduler();
+    if (!state.scada.mapCountdownTimer) state.scada.mapCountdownTimer = setInterval(() => {
+      if (state.scada.timeMode !== 'historical') {
+        if (typeof updateSharedMapStatus === 'function') updateSharedMapStatus();
+      }
+    }, 1000);
     updateScadaCardUI();
   };
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.6
+
+- Kept no-current-data distinct from transport failures, preserving valid alternative alarm candidates and active state safety during failed batches.
+- Distinguished `PARTIAL_DATA` from `PARTIAL_NETWORK`, and separated configured monitoring scope from the last evaluated entity count in alarm diagnostics and CSV.
+
 ## 0.6.5
 
 - Separated five-minute live-data acceptance from a 45-second cache network-reuse window and made manual alarm checks force fresh data.

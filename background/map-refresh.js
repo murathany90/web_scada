@@ -3,6 +3,8 @@ const WebSCADAMapRefresh = (() => {
   const errorType = error => /timeout|zaman aşımı/i.test(String(error?.message || error)) ? 'TIMEOUT' : /auth|oturum|401|403/i.test(String(error?.message || error)) ? 'AUTH_REQUIRED' : 'NETWORK_ERROR';
   const diagnostic = input => globalThis.WebSCADADiagnosticLog?.append?.({ subsystem: 'map', ...input }).catch(() => {});
   const resultRows = result => Array.isArray(result?.data?.result) ? result.data.result.reduce((count, item) => count + (Array.isArray(item?.data) ? item.data.length : 0), 0) : 0;
+  const rowsFor = result => Array.isArray(result?.data?.result) ? result.data.result.flatMap(item => Array.isArray(item?.data) ? item.data : []) : [];
+  const rowMeasurementId = row => String(row?.measurementId ?? row?.sinsid ?? row?.['sinsid'] ?? '');
   const nextWholeMinute = now => (Math.floor(Number(now || Date.now()) / 60000) + 1) * 60000;
   const transient = () => chrome.storage.session || chrome.storage.local;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -30,6 +32,19 @@ const WebSCADAMapRefresh = (() => {
     }
     throw Object.assign(last || new Error('SCADA arka plan sorgusu başarısız.'), { type: errorType(last) });
   }
+  async function retryPartialNetwork(result, payload, context, trigger) {
+    const meta = result?.meta || {}; const failedMeasurementIds = [...new Set((meta.failedMeasurementIds || []).map(String).filter(Boolean))];
+    if (meta.resultKind !== 'PARTIAL_NETWORK' || !failedMeasurementIds.length) return result;
+    await diagnostic({ event: 'MAP_BACKGROUND_PARTIAL_RETRY', level: 'warn', message: 'Partial network measurement retry.', trigger, mode: context.scope?.mode, scopeSummary: context.scope?.filterKey, failedMeasurementCount: failedMeasurementIds.length, failedBatchCount: Number(meta.failedBatches || 0), result: 'RETRY' });
+    let retry = null;
+    try {
+      retry = await WebSCADARequestCoordinator.run({ key: WebSCADARequestCoordinator.requestKey('SCADA_FETCH', { ...payload, measurementIds: failedMeasurementIds, partialRetry: true }), coalesceKey: 'map-partial-retry', priority: 4, label: 'Harita kısmi ölçüm yenileme' }, () => WebSCADAQuery.executeLiveScada({ ...payload, measurementIds: failedMeasurementIds, forceFresh: true, triggerType: 'auto-background-partial-retry' }));
+    } catch (_) { retry = null; }
+    const retryRows = rowsFor(retry); const retryIds = new Set(retryRows.map(rowMeasurementId).filter(Boolean)); const retryFailed = new Set((retry?.meta?.failedMeasurementIds || []).map(String));
+    const unresolved = failedMeasurementIds.filter(id => retryFailed.has(id) || !retryIds.has(id));
+    const mergedResultData = { ...(result.data || {}), result: [...(result.data?.result || []), ...(retry?.data?.result || [])] };
+    return { ...result, data: mergedResultData, meta: { ...meta, resultKind: unresolved.length ? 'PARTIAL_NETWORK' : 'OK', failedMeasurementIds: unresolved, failedBatches: unresolved.length ? Number(retry?.meta?.failedBatches || meta.failedBatches || 1) : 0, partialRetryMeasurementCount: failedMeasurementIds.length, partialRetryRecoveredCount: failedMeasurementIds.length - unresolved.length } };
+  }
   async function run(trigger = 'map-background', wake = {}) {
     const { context, status: old } = await state(); const settings = await WebSCADASettings.load(); const startedAt = new Date().toISOString();
     if (!settings.autoRefreshEnabled || context.enabled === false || !context.payload?.measurementIds?.length) return { ok: true, skipped: 'disabled' };
@@ -37,7 +52,7 @@ const WebSCADAMapRefresh = (() => {
     await storeStatus({ ...old, enabled: true, running: true, lastStartedAt: startedAt, lastSchedulerWakeAt: wake.at || old.lastSchedulerWakeAt || null, lastTrigger: trigger, lastError: '' }, settings.autoRefreshMinutes);
     try {
       const payload = { ...context.payload, triggerType: 'auto-background', liveCacheSemantics: 'map-aggregate' }; await diagnostic({ event: 'MAP_AUTO_QUERY_START', message: 'Harita arka plan sorgusu başladı.', trigger, mode: context.scope?.mode, scopeSummary: context.scope?.filterKey, entityCount: context.scope?.entityCount || context.scope?.entities?.length || 0, measurementCount: payload.measurementIds.length });
-      const { result, attempts } = await executeWithRetry(payload, context, trigger); const completedAt = new Date().toISOString(); const rows = resultRows(result); const meta = result.meta || {}; const durationMs = Date.now() - new Date(startedAt).getTime(); const resultEntry = { at: Date.now(), completedAt, scope: context.scope, data: result.data, transport: { authMode: result.authMode, httpStatus: result.httpStatus, meta } };
+      let { result, attempts } = await executeWithRetry(payload, context, trigger); result = await retryPartialNetwork(result, payload, context, trigger); const completedAt = new Date().toISOString(); const rows = resultRows(result); const meta = result.meta || {}; const durationMs = Date.now() - new Date(startedAt).getTime(); const resultEntry = { at: Date.now(), completedAt, scope: context.scope, data: result.data, transport: { authMode: result.authMode, httpStatus: result.httpStatus, meta } };
       await transient().set({ [RESULT]: resultEntry }); await diagnostic({ event: 'MAP_AUTO_QUERY_END', message: 'Harita arka plan sorgusu tamamlandı.', trigger, mode: context.scope?.mode, scopeSummary: context.scope?.filterKey, entityCount: context.scope?.entityCount || context.scope?.entities?.length || 0, measurementCount: payload.measurementIds.length, batchIndex: meta.completedBatches, totalBatches: meta.totalBatches, cacheCount: meta.cacheReuseCount, networkCount: meta.networkMeasurementIdCount, returnedRows: rows, durationMs, recoveryCount: attempts - 1, result: meta.resultKind || 'OK', authMode: result.authMode });
       await storeStatus({ enabled: true, running: false, lastStartedAt: startedAt, lastCompletedAt: completedAt, lastTrigger: trigger, lastDurationMs: durationMs, durationMs, mode: context.scope?.mode || '', scope: context.scope?.filterKey || '', entityCount: context.scope?.entityCount || context.scope?.entities?.length || 0, measurementIdCount: payload.measurementIds.length, batchCount: meta.totalBatches || 0, cacheCount: meta.cacheReuseCount || 0, networkCount: meta.networkMeasurementIdCount || 0, returnedRows: rows, result: meta.resultKind || 'OK', errorType: '', lastError: '', lastErrorType: '', recoveryCount: attempts - 1 }, settings.autoRefreshMinutes); return { ok: true, result: resultEntry };
     } catch (caught) {
@@ -46,5 +61,5 @@ const WebSCADAMapRefresh = (() => {
     }
   }
   chrome.alarms.onAlarm.addListener(alarm => { if (alarm?.name === NAME) void run('map-background', { at: new Date().toISOString() }).catch(() => {}); });
-  return { NAME, CONTEXT, RESULT, STATUS, RETRY_DELAYS_MS, nextWholeMinute, retryable, state, currentSchedule, ensure, setContext, executeWithRetry, run };
+  return { NAME, CONTEXT, RESULT, STATUS, RETRY_DELAYS_MS, nextWholeMinute, retryable, state, currentSchedule, ensure, setContext, executeWithRetry, retryPartialNetwork, run };
 })();

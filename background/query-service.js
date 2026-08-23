@@ -1,6 +1,6 @@
 const WebSCADAQuery = (() => {
   const BATCH_SIZE = 200; const LiveCache = globalThis.WebSCADALiveMeasurementCache || null;
-  const diagnostic = input => globalThis.WebSCADADiagnosticLog?.append?.({ subsystem: 'superset', ...input }).catch(() => {});
+  const diagnostic = input => { const write = globalThis.WebSCADADiagnosticLog?.append?.({ subsystem: 'superset', ...input }); if (write?.catch) void write.catch(() => {}); };
   const cancelledMapRequests = new Set();
   const rowsFrom = result => Array.isArray(result?.data?.result) ? result.data.result.flatMap(item => Array.isArray(item?.data) ? item.data : []) : [];
   const chunks = (ids, size = BATCH_SIZE) => ids.length ? Array.from({ length: Math.ceil(ids.length / size) }, (_, index) => ids.slice(index * size, (index + 1) * size)) : [[]]; const uniqueIds = payload => [...new Set((Array.isArray(payload?.measurementIds) ? payload.measurementIds : []).map(String).filter(Boolean))];

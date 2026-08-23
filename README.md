@@ -2,7 +2,7 @@
 
 **WebSCADA**, TEİAŞ YTBS (Yük Tevzi Bilgi Sistemi) topoloji modeli ile Superset üzerinden alınan SCADA verilerini tek bir Chrome eklentisi içinde **Datalar**, **Sorgular** ve **Harita** çalışma alanlarında birleştiren bağımsız bir Manifest V3 uygulamasıdır.
 
-> Güncel sürüm: **v0.6.13**
+> Güncel sürüm: **v0.6.14**
 > Eklenti tipi: **Chrome Extension / Manifest V3**  
 > Ana dil: **Türkçe**  
 > Çalışma modeli: **Yerel YTBS topolojisi + kurum Superset/SCADA verisi**
@@ -563,7 +563,7 @@ Build çıktısı:
 ```text
 dist/
 ├── chrome-extension/
-└── WebSCADA_0.6.13_YYYYMMDD_HHMMSS.zip
+└── WebSCADA_0.6.14_YYYYMMDD_HHMMSS.zip
 ```
 
 Build sonunda SHA256 hesaplanır.
@@ -1051,6 +1051,12 @@ Kontrol:
 ---
 
 # Sürüm geçmişi
+
+## v0.6.14
+
+- Partial network background measurement IDs are retried first; unresolved IDs are retained only through a safe last-good merge, otherwise the result is rejected.
+- Last-good live data remains visible during transient failures, then is marked stale after the refresh-aware threshold.
+- Diagnostic writes are buffered, quota recovery is explicit, and the obsolete alarm background toggle has been removed.
 
 ## v0.6.13
 

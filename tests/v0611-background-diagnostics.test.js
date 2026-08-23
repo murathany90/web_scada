@@ -29,7 +29,7 @@ test('persistent diagnostic logger redacts secrets and keeps its ring limit', as
   const store = {};
   global.chrome = { storage: { local: { get: async key => ({ [key]: store[key] }), set: async value => Object.assign(store, value) } } };
   const loggerPath = path.join(root, 'core', 'diagnostic-log.js'); delete require.cache[loggerPath]; const logger = require(loggerPath);
-  await Promise.all(Array.from({ length: logger.LIMIT + 9 }, (_, index) => logger.append({ event: 'TEST', message: `row-${index}`, token: 'never-store' })));
+  await Promise.all(Array.from({ length: logger.LIMIT + 9 }, (_, index) => logger.append({ event: 'TEST', message: `row-${index}`, token: 'never-store' }))); await logger.flushNow();
   assert.equal(store[logger.KEY].length, logger.LIMIT);
   assert.deepEqual(logger.redact({ password: 'x', nested: { Authorization: 'y' }, message: 'token=never-store' }), { password: '[REDACTED]', nested: { Authorization: '[REDACTED]' }, message: 'token=[REDACTED]' });
 });

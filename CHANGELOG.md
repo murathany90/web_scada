@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.14
+
+- Retried failed background-map measurements and safely merged unresolved partial-network IDs with the last-good V2 snapshot; unsafe partial responses are rejected without clearing live values.
+- Kept a last-good snapshot through transient failures but marks it stale after the refresh-aware threshold instead of showing it live indefinitely.
+- Buffered diagnostic writes, added precise quota-recovery diagnostics, and removed the obsolete alarm background toggle while preserving automatic monitoring.
+
 ## 0.6.13
 
 - Bounded and batched diagnostic storage, compacted diagnostic request IDs, recovered safely from quota pressure, and moved transient SCADA cache/snapshot data to session storage.

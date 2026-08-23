@@ -241,20 +241,6 @@ function initScadaCard() {
     btnReport.addEventListener('click', showScadaMismatchReportModal);
   }
 
-  const btnMock = card.querySelector('[data-scada-btn="mock"]');
-  if (btnMock) {
-    updateMockBtnUI(btnMock);
-    btnMock.addEventListener('click', () => {
-      SCADA_CONFIG.MOCK_ENABLED = !SCADA_CONFIG.MOCK_ENABLED;
-      updateMockBtnUI(btnMock);
-      scadaLog('info', `Veri kaynağı: ${SCADA_CONFIG.MOCK_ENABLED ? 'MOCK' : 'CANLI (Superset)'}`);
-      state.scada.lineFlowByLineId.clear();
-      requestRender();
-      if (typeof refreshRankingTable === 'function') refreshRankingTable();
-      if (state.scada.enabled) scadaDoFetch({ trigger: 'manual' });
-    });
-  }
-
   /* Season toggle */
   const btnWinter = document.getElementById('btnSeasonWinter');
   const btnSummer = document.getElementById('btnSeasonSummer');
@@ -372,14 +358,6 @@ function refreshLogPanel() {
     const time = WebSCADALogTime.formatScadaLogTime(e.ts);
     return `<div class="log-entry ${cls}"><span class="log-time">${time}</span> ${e.message}${e.detail ? ` <span class="log-detail">${e.detail}</span>` : ''}</div>`;
   }).join('');
-}
-
-/* ───────── MOCK BUTTON ───────── */
-function updateMockBtnUI(btn) {
-  if (!btn) return;
-  btn.style.background = SCADA_CONFIG.MOCK_ENABLED ? '#f59e0b' : '#22c55e';
-  btn.style.color = '#fff';
-  btn.title = SCADA_CONFIG.MOCK_ENABLED ? 'Mock Veri Aktif — Tıkla: Canlıya Geç' : 'Canlı Veri Aktif — Tıkla: Mock\'a Geç';
 }
 
 /* ───────── RANKING PANEL (⚡) ───────── */
@@ -520,7 +498,7 @@ function legacyRefreshRankingTable_v1() {
     const activeClass = f.hatId === _rankingActiveHatId ? 'ranking-active' : '';
     return `<tr class="${activeClass}" data-hat-id="${f.hatId}">
       <td class="col-idx">${i + 1}</td>
-      <td class="col-name" title="${f.hatName}">${f.hatName}${f.isMock ? ' <i style="opacity:0.6;font-size:0.9em">(m)</i>' : ''}</td>
+      <td class="col-name" title="${f.hatName}">${f.hatName}</td>
       <td class="col-km">${typeof f.hatLengthKm === 'number' ? f.hatLengthKm.toFixed(0) : '—'}</td>
       <td class="col-ts">${ts}</td>
       <td class="col-mw">${f.mw >= 0 ? '+' : ''}${f.mw.toFixed(1)}</td>
@@ -1336,7 +1314,7 @@ function legacyRefreshRankingTable_v2() {
     const activeClass = flow.hatId === _rankingActiveHatId ? 'ranking-active' : '';
     return `<tr class="${activeClass}" data-hat-id="${flow.hatId}">
       <td class="col-idx">${index + 1}</td>
-      <td class="col-name" title="${flow.hatName}">${flow.hatName}${flow.isMock ? ' <i style="opacity:0.6;font-size:0.9em">(m)</i>' : ''}</td>
+      <td class="col-name" title="${flow.hatName}">${flow.hatName}</td>
       <td class="col-km">${typeof flow.hatLengthKm === 'number' ? flow.hatLengthKm.toFixed(0) : '—'}</td>
       <td class="col-ts">${ts}</td>
       <td class="col-mw">${flow.mw >= 0 ? '+' : ''}${flow.mw.toFixed(1)}</td>

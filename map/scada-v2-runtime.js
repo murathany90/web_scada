@@ -673,12 +673,14 @@
       updatedAt: new Date()
     };
     if (typeof syncScadaFetchUi === 'function') syncScadaFetchUi();
+    if (typeof updateSharedMapStatus === 'function') updateSharedMapStatus();
     return state.scada.operationMeta;
   }
 
   function clearScadaOperationMeta() {
     state.scada.operationMeta = null;
     if (typeof syncScadaFetchUi === 'function') syncScadaFetchUi();
+    if (typeof updateSharedMapStatus === 'function') updateSharedMapStatus();
   }
 
   // Background batch progress only moves the active operation; any other
@@ -1860,7 +1862,6 @@
         hatLengthKm: record.entity.lengthKm || 0,
         hatId: record.entity.id,
         sinsid: record.primaryMeasurementId,
-        isMock: SCADA_CONFIG.MOCK_ENABLED,
         unavailable: false
       });
     });
@@ -2272,7 +2273,7 @@
     refreshScadaVisibleSummary();
     restoreScadaDashboardSnapshotFromStorage();
     if (typeof chrome !== 'undefined' && chrome.storage?.local?.get) chrome.storage.local.get('webscadaBackgroundMapResult').then(data => applyBackgroundMapResult(data.webscadaBackgroundMapResult));
-    if (globalThis.WebSCADASettings) WebSCADASettings.load().then(settings => { state.scada.autoRefresh = settings.autoRefreshEnabled; state.scada.capacitySeason = settings.capacitySeason; if (state.scada.enabled && state.scada.autoRefresh) startScadaAutoScheduler(); });
+    if (globalThis.WebSCADASettings) WebSCADASettings.load().then(settings => { state.scada.autoRefresh = settings.autoRefreshEnabled; state.scada.autoRefreshMinutes = settings.autoRefreshMinutes; state.scada.capacitySeason = settings.capacitySeason; if (typeof updateSharedMapStatus === 'function') updateSharedMapStatus(); if (state.scada.enabled && state.scada.autoRefresh) startScadaAutoScheduler(); });
     scadaLog('info', `SCADA V2 modulu hazir. ${state.network.hatLines.length} hat, ${state.network.trafos.length} trafo, ${state.network.baraNodes.length} bara yuklendi.`);
   };
 
@@ -2670,9 +2671,7 @@
     }
 
 try {
-      const result = SCADA_CONFIG.MOCK_ENABLED
-        ? await scadaFetchMock()
-        : await chrome.runtime.sendMessage({
+      const result = await chrome.runtime.sendMessage({
             type: 'SCADA_FETCH',
             payload: {
               baseUrl: SCADA_CONFIG.SUPERSET_ORIGIN,

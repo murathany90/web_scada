@@ -37,15 +37,21 @@ function Assert-PackagedHtmlAssets([string]$HtmlPath) {
   }
 }
 Get-ChildItem -LiteralPath $unpacked -Filter '*.html' -Recurse -File | ForEach-Object { Assert-PackagedHtmlAssets $_.FullName }
-$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'; $zip = Join-Path $dist "WebSCADA_0.6.6_$stamp.zip"
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'; $zip = Join-Path $dist "WebSCADA_0.6.7_$stamp.zip"
 Push-Location $unpacked
 try { Compress-Archive -Path .\* -DestinationPath $zip -CompressionLevel Optimal } finally { Pop-Location }
 $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
 try {
   $entryNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-  $forbidden = @($entryNames | Where-Object { $_ -match '(^|/)(tests|docs|scripts|dist|node_modules)/|(^|/)mock_scada\.json$' })
-  if ($entryNames -contains 'data/scada_auth.example.json' -or $forbidden.Count) { throw 'Paket sadece runtime dosyalarini icermeli; gelistirme dosyasi bulundu.' }
+  $forbidden = @($entryNames | Where-Object { $_ -match '(?i)(^|/)(tests|docs|scripts|dist|node_modules)/|(^|/)[^/]*mock[^/]*$' })
+  if ($entryNames -contains 'data/scada_auth.example.json' -or $forbidden.Count) { throw 'Paket sadece runtime dosyalarini icermeli; gelistirme veya mock dosyasi bulundu.' }
   foreach ($required in @('manifest.json','app.html','app.js','alarm-view.js','settings-view.js','icons/icon-128.png','offscreen/alarm-audio.html','offscreen/alarm-audio.js','data/kml_layers_v2.json','data/mapping.json','data/scada_auth.json') + ($sounds | ForEach-Object { "sounds/alarm/$_" })) { if ($entryNames -notcontains $required) { throw "Paket eksik runtime dosyasi: $required" } }
+  $mockTokens = @('scadaFetchMock','MOCK_ENABLED','MOCK_DATA_PATH','btnScadaMock','data-scada-btn="mock"')
+  foreach ($entry in @($archive.Entries | Where-Object { $_.FullName -match '\.(?:js|html|json)$' })) {
+    $reader = [System.IO.StreamReader]::new($entry.Open())
+    try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    foreach ($token in $mockTokens) { if ($text.Contains($token)) { throw "Paket runtime mock belirteci iceriyor: $($entry.FullName)" } }
+  }
 } finally { $archive.Dispose() }
 $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
 Write-Output "ZIP=$zip"; Write-Output "SHA256=$hash"

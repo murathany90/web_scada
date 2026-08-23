@@ -95,7 +95,7 @@ body {
   flex-shrink: 0;
   transition: margin-left 0.3s ease;
   position: relative;
-  padding: 10px;
+  padding: 8px;
   background: var(--panel);
   backdrop-filter: blur(18px);
   border-right: 1px solid var(--panel-border);
@@ -136,7 +136,7 @@ body {
 
 
 .sidebar-head {
-  padding: 4px 4px 8px;
+  padding: 3px 4px 5px;
 }
 
 .eyebrow {
@@ -160,10 +160,10 @@ body {
 }
 
 .panel {
-  margin-top: 8px;
-  padding: 10px 12px;
+  margin-top: 6px;
+  padding: 8px 10px;
   border: 1px solid var(--panel-border);
-  border-radius: 18px;
+  border-radius: 12px;
   background: linear-gradient(180deg, var(--surface) 0%, rgba(255, 255, 255, 0.08) 100%);
   box-shadow: var(--shadow);
 }
@@ -173,7 +173,7 @@ body {
   font-family: var(--font-head);
   font-size: 14px;
   font-weight: 700;
-  margin: 0 0 10px;
+  margin: 0 0 7px;
   cursor: pointer;
 }
 

@@ -16,6 +16,7 @@
     return '';
   }
   function append(list, entry, max) { return [...(Array.isArray(list) ? list : []), entry].slice(-max); }
+  function snooze(entry = {}, minutes = 15, nowMs = Date.now()) { const until = nowMs + Math.max(1, Number(minutes || 15)) * 60000; return { ...entry, snoozedUntil: until, snoozeReminderAt: until }; }
   function nextState(previous = {}, evaluation, value, nowMs = Date.now()) {
     const current = previous.state || 'NORMAL'; const threshold = Number(evaluation.thresholdPct); const clearAt = threshold - Number(evaluation.hysteresisPct || 0);
     if (!Number.isFinite(value)) return { ...previous, state: current === 'ACTIVE' || current === 'ACTIVE_DATA_UNAVAILABLE' ? 'ACTIVE_DATA_UNAVAILABLE' : 'NO_DATA', loadingPct: null, valueTimestamp: evaluation.valueTimestamp || null, updatedAt: new Date(nowMs).toISOString(), changed: current === 'ACTIVE', notify: false, alertDue: false };
@@ -27,5 +28,5 @@
     const notify = target === 'ACTIVE' && !snoozed && !previous.acknowledgedAt && ((current !== 'ACTIVE' && current !== 'ACTIVE_DATA_UNAVAILABLE') || due || snoozeReminder);
     return { ...previous, state: target, loadingPct: value, valueTimestamp: evaluation.valueTimestamp || null, updatedAt: new Date(nowMs).toISOString(), changed, notify, alertDue: notify, clearAt, ...(snoozeReminder ? { snoozeReminderAt: 0 } : {}), ...(target === 'NORMAL' ? { acknowledgedAt: null, snoozedUntil: null, snoozeReminderAt: 0, lastNotifiedAt: 0, lastAlertedAt: 0 } : {}) };
   }
-  return { LIMITS, rule, validate, append, nextState };
+  return { LIMITS, rule, validate, append, snooze, nextState };
 }));

@@ -19,7 +19,7 @@
       <button class="webscada-tab active" data-webscada-tab="map">Harita</button>
       <button class="webscada-tab" data-webscada-tab="settings">Ayarlar</button>
     </nav>
-    <div id="webscadaStatus" class="webscada-status">Harita hazirlaniyor</div>
+    <div id="webscadaStatus" class="webscada-status" title="Harita/SCADA durumu">HAZIRLANIYOR</div>
     <button id="webscadaThemeToggle" class="webscada-theme-toggle" title="Temayı değiştir" aria-label="Temayı değiştir">☾</button>
   </header>
   <section id="webscadaMap" class="webscada-view active" aria-label="Harita">
@@ -33,7 +33,7 @@
       </button>
       <div class="sidebar-inner">
         <div class="sidebar-head">
-          <h2 style="margin: 0 0 10px 0; font-size: 18px; color: var(--accent);">WebSCADA — YTBS Sebeke Haritasi</h2>
+          <h2 style="margin: 0 0 6px 0; font-size: 18px; color: var(--accent);">YTBS Sebeke Haritasi</h2>
         </div>
 
         <section class="panel tools-panel top-gap">
@@ -64,7 +64,7 @@
           </div>
         </section>
 
-        <details class="panel" open>
+        <details class="panel" data-map-panel="hat-display">
           <summary>Hat Gosterimi</summary>
           <div class="segmented">
             <button id="btnHatModeDetayli" class="segmented-btn active" style="padding: 6px 10px;">Detayli</button>
@@ -73,7 +73,7 @@
           </div>
         </details>
 
-        <details class="panel" open>
+        <details class="panel" data-map-panel="layers" open>
           <summary>Katmanlar</summary>
           <div class="filter-list">
             <label class="toggle-row"><input type="checkbox" id="showBaras"><span>Baralar</span></label>
@@ -86,7 +86,7 @@
           </div>
         </details>
 
-        <details class="panel" open>
+        <details class="panel" data-map-panel="voltage-filters">
           <summary>Gerilim filtreleri</summary>
           <div class="filter-list">
             <label class="toggle-row"><input type="checkbox" id="kvFilterAll" checked><span>Tumu</span></label>
@@ -99,7 +99,7 @@
           </div>
         </details>
 
-        <details class="panel" open>
+        <details class="panel" data-map-panel="ytm-filters">
           <summary>Yuk Tevzi Mudurlugu</summary>
           <div class="filter-bulk-actions">
             <button id="btnYtmSelectAll" type="button" class="tiny">Tumu</button>
@@ -108,10 +108,10 @@
           <div id="ytmFilters" class="filter-list"></div>
         </details>
 
-        <section class="panel" id="baraSetPanel">
+        <details class="panel" id="baraSetPanel" data-map-panel="bara-set">
+          <summary>Bara Set</summary>
           <div class="panel-head">
             <div>
-              <h2>Bara Set</h2>
               <p class="muted small">xls/xlsx yukleyin, saat bazli izleyin.</p>
             </div>
             <button id="btnLoadBaraSet" class="primary">Yukle</button>
@@ -133,9 +133,9 @@
             <button id="btnModeKv" class="segmented-btn active" data-mode="kv">kV</button>
             <button id="btnModePu" class="segmented-btn" data-mode="pu">p.u.</button>
           </div>
-        </section>
+        </details>
 
-        <details class="panel" id="scadaCard" open>
+        <details class="panel" id="scadaCard" data-map-panel="scada" open>
           <summary>SCADA Veri</summary>
           <div class="scada-card-body">
             <div class="scada-header-line">
@@ -218,7 +218,8 @@
                 <button id="btnSeasonSummer" class="segmented-btn" data-season="summer">Yaz</button>
               </div>
             </div>
-            <div id="scadaFetchInfo" class="scada-fetch-card">
+            <details id="scadaFetchInfo" class="scada-fetch-card" data-map-panel="scada-fetch">
+              <summary>Son Sorgu</summary>
               <div class="scada-fetch-head">
                 <strong>Son Sorgu</strong>
                 <span id="scadaFetchBadge" class="scada-fetch-badge is-idle">Hazir</span>
@@ -247,18 +248,17 @@
                   <div><span class="scada-label">Tasima</span><strong id="scadaFetchTransport">-</strong></div>
                 </div>
               </details>
-            </div>
+            </details>
             <div id="scadaLejant" class="scada-lejant"></div>
             <div id="scadaQualityChips" class="scada-quality-chips"></div>
             <div id="scadaKalite" class="scada-quality">Kalite ozetleri burada gosterilir.</div>
-            <details class="scada-tanilama">
+            <details class="scada-tanilama" data-map-panel="diagnostics">
               <summary>Gelismis / Tanilama</summary>
               <div class="scada-tanilama-body">
                 <div class="scada-tanilama-actions">
                   <button data-scada-btn="audit" class="tiny">Denetim CSV</button>
                   <button data-scada-btn="report" class="tiny">Mismatch Raporu</button>
                   <button data-scada-btn="log" class="tiny" title="Log Paneli">Log</button>
-                  <button data-scada-btn="mock" class="tiny" id="btnScadaMock" title="Mock/Canli Gecisi">Kaynak</button>
                 </div>
                 <div class="scada-stats">
                   <div><span class="scada-label">Toplam</span><span id="scadaToplam">0</span></div>
@@ -272,7 +272,7 @@
           </div>
         </details>
 
-        <details class="panel" open>
+        <details class="panel" data-map-panel="legend">
           <summary>Lejant</summary>
           <div class="legend">
             <span><i class="legend-line kv400-line"></i>400 kV Hat/TM</span>

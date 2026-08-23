@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.7
+
+- Removed production mock SCADA transport/UI paths and added a release gate for real-extension runtime packaging.
+- Added a 15-minute individual alarm notification snooze button, persisted alarm action states, and one shared compact map/SCADA status presentation.
+
 ## 0.6.6
 
 - Kept no-current-data distinct from transport failures, preserving valid alternative alarm candidates and active state safety during failed batches.

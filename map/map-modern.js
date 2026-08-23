@@ -1,14 +1,5 @@
 const HAT_TM_COLORS = { '400': '#dc2626', '154': 'var(--line-154-color)', '66': '#7c3aed', '': '#64748b' };
 const BARA_COLORS = { '400': '#2563eb', '154': '#f97316', '66': '#f97316', '': '#6b7280' };
-// MOCK CHROME API FOR LOCAL SERVER TESTING
-if (!window.chrome || !window.chrome.storage) {
-  window.chrome = { 
-    ...(window.chrome || {}),
-    storage: { local: { get: async () => ({}), set: async () => {} } }, 
-    runtime: { getURL: (p) => p } 
-  };
-}
-
 const TILE_SIZE = 256;
 const MAP_PREFS_KEY = 'tpysMapPrefs';
 const BARA_SET_CACHE_KEY = 'tpysBaraSetCache';
@@ -96,6 +87,7 @@ const state = {
   scada: {
     enabled: false,
     autoRefresh: true,
+    autoRefreshMinutes: 2,
     lastFetchAt: null,
     lastDataTimestamp: null,
     totalRows: 0,
@@ -202,6 +194,7 @@ const el = {
   btnHatModeSadeAyrik: document.getElementById('btnHatModeSadeAyrik'),
   hoverTooltip: document.getElementById('hoverTooltip'),
   mapStatus: document.getElementById('mapStatus'),
+  webscadaStatus: document.getElementById('webscadaStatus'),
   mapShell: document.querySelector('.map-shell')
 };
 
@@ -223,6 +216,7 @@ async function init() {
     state.network.tmMap = new Map();
     if (state.network.tmPoints) state.network.tmPoints.forEach(tm => state.network.tmMap.set(tm.name, tm));
     restoreMapPrefs(savedMapPrefs?.[MAP_PREFS_KEY]);
+    applyMapPanelPrefs();
 
     initializeFilters();
     if (savedBaraSet?.[BARA_SET_CACHE_KEY]?.rows?.length) restoreBaraSet(savedBaraSet[BARA_SET_CACHE_KEY]);
@@ -290,6 +284,7 @@ function persistMapPrefs() {
     [MAP_PREFS_KEY]: {
       theme: state.map.theme,
       scadaMapDisplayMode: state.filters.scadaMapDisplayMode,
+      panelOpen: Object.fromEntries([...document.querySelectorAll('[data-map-panel]')].map(panel => [panel.dataset.mapPanel, panel.open])),
       savedAt: new Date().toISOString()
     }
   });
@@ -303,7 +298,6 @@ function applyToolbarIcons() {
   setIconButtonContent(el.zoomInBtn, 'zoomIn', 'Yakinlastir');
   setIconButtonContent(document.querySelector('[data-scada-btn="refresh"]'), 'refresh', 'Yenile', { keepLabelVisible: true });
   setIconButtonContent(document.querySelector('[data-scada-btn="log"]'), 'log', 'Log', { keepLabelVisible: true });
-  setIconButtonContent(document.querySelector('[data-scada-btn="mock"]'), 'source', 'Kaynak', { keepLabelVisible: true });
   const boltButton = document.getElementById('btnScadaRanking');
   if (boltButton) {
     boltButton.innerHTML = renderIcon('bolt');
@@ -317,6 +311,15 @@ function restoreMapPrefs(prefs) {
   if (['flow', 'heatmap', 'current', 'point', 'point-label', 'box'].includes(prefs.scadaMapDisplayMode)) {
     state.filters.scadaMapDisplayMode = prefs.scadaMapDisplayMode;
   }
+  state.ui.panelOpen = prefs.panelOpen || {};
+}
+
+function applyMapPanelPrefs() {
+  const saved = state.ui.panelOpen || {};
+  document.querySelectorAll('[data-map-panel]').forEach(panel => {
+    if (Object.prototype.hasOwnProperty.call(saved, panel.dataset.mapPanel)) panel.open = Boolean(saved[panel.dataset.mapPanel]);
+    panel.addEventListener('toggle', () => persistMapPrefs());
+  });
 }
 
 function buildMappingIndex(rows) {
@@ -835,11 +838,18 @@ function clearMapSelection(options = {}) {
 
 function setStatus(text, level = 'info') {
   state.map.status = { text: String(text || '').trim(), level };
-  if (el.mapStatus) {
-    el.mapStatus.textContent = state.map.status.text || 'Hazir.';
-    el.mapStatus.className = `status-pill status-${level} top-gap`;
-  }
+  updateSharedMapStatus();
   console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log']('Map Status:', state.map.status.text);
+}
+
+function updateSharedMapStatus() {
+  const scada = state.scada || {}; const fetch = scada.fetchMeta || {}; const op = scada.operationMeta || {}; const clock = value => value ? new Date(value).toLocaleTimeString('tr-TR') : '—'; const auto = scada.autoRefresh ? `Oto ${scada.autoRefreshMinutes || 2} dk` : 'Oto kapalı'; let text = state.map.status?.text || 'Hazır'; let level = state.map.status?.level || 'info';
+  if (scada.timeMode === 'historical') { text = `GEÇMİŞ · ${scada.historicalAt ? new Date(scada.historicalAt).toLocaleString('tr-TR') : clock(scada.lastDataTimestamp)} · Canlı yenileme kapalı`; level = 'info'; }
+  else if (fetch.status === 'loading' || ['running', 'batches', 'queued'].includes(op.stage)) { text = op.stage === 'queued' || fetch.stage === 'queued' ? 'BEKLİYOR · Superset kuyruğu' : `SORGULANIYOR · %${Math.round(Number(op.progressPct ?? fetch.progressPct) || 0)} · ${scada.currentScope?.modeLabel || 'SCADA'}`; level = 'info'; }
+  else if (fetch.status === 'error' || scada.error) { text = `HATA · ${fetch.errorType || scada.errorType || fetch.error || scada.error || 'sorgu'} · Son başarılı veri ${clock(scada.lastDataTimestamp)}`; level = 'error'; }
+  else if (scada.enabled && scada.lastDataTimestamp) { text = `CANLI · Veri ${clock(scada.lastDataTimestamp)} · ${auto} · Son ${clock(fetch.finishedAt || scada.lastFetchAt)} · TAMAM`; level = 'success'; }
+  if (el.mapStatus) { el.mapStatus.textContent = text; el.mapStatus.className = `status-pill status-${level} top-gap`; }
+  if (el.webscadaStatus) { el.webscadaStatus.textContent = text; el.webscadaStatus.title = text; el.webscadaStatus.className = `webscada-status is-${level}`; }
 }
 
 function cancelHoverTooltipHide() {

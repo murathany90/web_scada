@@ -4,24 +4,6 @@
  * normalization, duplicate/stale handling and UI-facing state.
  */
 
-if (!window.chrome || !window.chrome.storage) {
-  window.chrome = {
-    ...(window.chrome || {}),
-    storage: { local: { get: async () => ({}), set: async () => {} } },
-    runtime: {
-      ...(window.chrome?.runtime || {}),
-      getURL: (path) => path,
-      sendMessage: async () => ({
-        ok: false,
-        error: 'Chrome runtime mevcut degil.',
-        errorType: 'EXTENSION_UNAVAILABLE',
-        authMode: 'session',
-        usedFallback: false
-      })
-    }
-  };
-}
-
 const SCADA_CONFIG = {
   SUPERSET_ORIGIN: 'https://analytics.teias.gov.tr',
   DASHBOARD_ID: 89,
@@ -38,8 +20,6 @@ const SCADA_CONFIG = {
   STALE_DEAD_SEC: 3600,
   HAT_AMBIGUOUS_ABS_TOLERANCE_MW: 12,
   HAT_AMBIGUOUS_REL_TOLERANCE: 0.08,
-  MOCK_ENABLED: false,
-  MOCK_DATA_PATH: 'data/mock_scada.json',
   LOADING_THRESHOLDS: [
     { max: 55, color: '#22c55e', label: '0-55%' },
     { max: 65, color: '#eab308', label: '55-65%' },
@@ -183,27 +163,6 @@ function normalizeScadaRows(rawJson) {
   return new Map();
 }
 
-async function scadaFetchMock() {
-  const response = await fetch(chrome.runtime.getURL(SCADA_CONFIG.MOCK_DATA_PATH));
-  if (!response.ok) throw new Error('Mock veri dosyasi yuklenemedi.');
-  const json = await response.json();
-  const mockRows = (json.mockRows || []).map((row) => ({
-    sinsid: row.sinsid,
-    b1Name: row.b1Name || '',
-    b2Name: row.b2Name || '',
-    b3Name: row.b3Name || '',
-    elementName: row.elementName || 'P',
-    'MAX(__time)': new Date().toISOString(),
-    'AVG(maxValue)': Number(row.avgMaxValue || row['AVG(maxValue)'] || 0)
-  }));
-  return {
-    ok: true,
-    data: { data: mockRows },
-    authMode: 'mock',
-    usedFallback: false,
-    httpStatus: 200
-  };
-}
 
 function updateScadaTransportState(result) {
   state.scada.lastTransport = {
@@ -297,6 +256,7 @@ function updateScadaFetchMeta(patch, refreshUi = true) {
     ...(patch || {})
   };
   if (refreshUi && typeof updateScadaCardUI === 'function') updateScadaCardUI();
+  if (typeof updateSharedMapStatus === 'function') updateSharedMapStatus();
   return state.scada.fetchMeta;
 }
 
@@ -434,9 +394,7 @@ async function scadaDoFetch(options = {}) {
         : [SCADA_CONFIG.QUERY_ELEMENT_NAME],
       measurementIds: Array.isArray(legacyScope.measurementIds) ? legacyScope.measurementIds : []
     };
-    const result = SCADA_CONFIG.MOCK_ENABLED
-      ? await scadaFetchMock()
-      : await chrome.runtime.sendMessage({
+    const result = await chrome.runtime.sendMessage({
         type: 'SCADA_FETCH',
         payload: {
           baseUrl: SCADA_CONFIG.SUPERSET_ORIGIN,
@@ -674,7 +632,6 @@ function applyScadaSnapshot(rowsBySinsid) {
       hatKv: hat.kv || '',
       hatLengthKm: hat.lengthKm || 0,
       hatId: hat.id,
-      isMock: SCADA_CONFIG.MOCK_ENABLED,
       unavailable: false
     });
 
@@ -787,5 +744,5 @@ function scadaBuildIndex() {
 
 async function scadaBoot() {
   scadaBuildIndex();
-  scadaLog('info', `SCADA modulu hazir. Mock: ${SCADA_CONFIG.MOCK_ENABLED ? 'acik' : 'kapali'}`);
+  scadaLog('info', 'SCADA modulu hazir. Gercek Superset aktarimi kullaniliyor.');
 }

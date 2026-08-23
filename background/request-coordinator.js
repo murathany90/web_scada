@@ -1,5 +1,6 @@
 const WebSCADARequestCoordinator = (() => {
   const MAX_CONCURRENT_SUPERSET = 1;
+  const diagnostic = input => globalThis.WebSCADADiagnosticLog?.append?.({ subsystem: 'coordinator', ...input }).catch(() => {});
   function create() {
     let running = 0; let sequence = 0; let active = null; let lastWaitMs = 0; let lastDurationMs = 0;
     const queue = []; const byKey = new Map();
@@ -9,15 +10,15 @@ const WebSCADARequestCoordinator = (() => {
       if (running >= MAX_CONCURRENT_SUPERSET) return;
       const job = takeNext(); if (!job) return;
       running += 1; active = { key: job.key, label: job.label, priority: job.priority, startedAt: Date.now() };
-      const started = Date.now(); lastWaitMs = started - job.queuedAt;
-      Promise.resolve().then(job.executor).then(job.resolve, job.reject).finally(() => { lastDurationMs = Date.now() - started; running -= 1; active = null; byKey.delete(job.key); pump(); });
+      const started = Date.now(); lastWaitMs = started - job.queuedAt; diagnostic({ event: 'COORDINATOR_START', message: 'Superset işi sıradan çalıştırılıyor.', requestId: job.key, scopeSummary: job.label, entityCount: queue.length, queueWaitMs: lastWaitMs, result: 'STARTED' });
+      Promise.resolve().then(job.executor).then(job.resolve, job.reject).finally(() => { lastDurationMs = Date.now() - started; diagnostic({ event: 'COORDINATOR_END', message: 'Superset işi tamamlandı.', requestId: job.key, scopeSummary: job.label, queueWaitMs: lastWaitMs, durationMs: lastDurationMs, result: 'ENDED' }); running -= 1; active = null; byKey.delete(job.key); pump(); });
     }
     function run(input, executor) {
       const job = { key: String(input?.key || `job-${sequence}`), coalesceKey: String(input?.coalesceKey || ''), label: String(input?.label || 'Superset sorgusu'), priority: Math.max(1, Number(input?.priority || 4)), executor, queuedAt: Date.now(), sequence: sequence++ };
       const existing = byKey.get(job.key); if (existing) return existing.promise;
       const coalesced = job.coalesceKey && queue.find(candidate => candidate.coalesceKey === job.coalesceKey);
       if (coalesced) { byKey.delete(coalesced.key); coalesced.key = job.key; coalesced.label = job.label; coalesced.priority = job.priority; coalesced.executor = job.executor; byKey.set(coalesced.key, coalesced); return coalesced.promise; }
-      job.promise = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject; }); byKey.set(job.key, job); queue.push(job); pump(); return job.promise;
+      job.promise = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject; }); byKey.set(job.key, job); queue.push(job); diagnostic({ event: 'COORDINATOR_ENQUEUE', message: 'Superset işi kuyruğa eklendi.', requestId: job.key, scopeSummary: job.label, queueWaitMs: 0, entityCount: queue.length, result: 'QUEUED' }); pump(); return job.promise;
     }
     return { run, state, _reset: () => { queue.splice(0); byKey.clear(); running = 0; active = null; }, _queue: queue };
   }

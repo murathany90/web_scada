@@ -124,6 +124,7 @@ function scadaLog(level, message, detail) {
   }
   const consoleMethod = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log';
   console[consoleMethod](`[SCADA ${level.toUpperCase()}]`, message, detail || '');
+  if (typeof chrome !== 'undefined') chrome.runtime?.sendMessage?.({ type: 'DIAG_LOG_APPEND', payload: { subsystem: 'map', event: 'MAP_UI_LOG', level, message, scopeSummary: state.scada?.currentScope?.filterKey || null } }).catch(() => {});
 }
 
 function buildChartPayload() {

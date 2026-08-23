@@ -1,5 +1,6 @@
 const WebSCADAQuery = (() => {
   const BATCH_SIZE = 200; const LiveCache = globalThis.WebSCADALiveMeasurementCache || null;
+  const diagnostic = input => globalThis.WebSCADADiagnosticLog?.append?.({ subsystem: 'superset', ...input }).catch(() => {});
   const cancelledMapRequests = new Set();
   const rowsFrom = result => Array.isArray(result?.data?.result) ? result.data.result.flatMap(item => Array.isArray(item?.data) ? item.data : []) : [];
   const chunks = (ids, size = BATCH_SIZE) => ids.length ? Array.from({ length: Math.ceil(ids.length / size) }, (_, index) => ids.slice(index * size, (index + 1) * size)) : [[]]; const uniqueIds = payload => [...new Set((Array.isArray(payload?.measurementIds) ? payload.measurementIds : []).map(String).filter(Boolean))];
@@ -40,26 +41,29 @@ const WebSCADAQuery = (() => {
     && /network|failed to fetch/i.test(`${result?.errorType || ''} ${result?.error || ''}`));
   async function fetchBatches(payload, makePayload) {
     const startedAt = Date.now(); const config = await WebSCADAAuth.loadConfig(); const groups = chunks(uniqueIds(payload), Math.max(1, Number(payload?.batchSize || BATCH_SIZE))); const results = [];
-    const requestId = String(payload?.requestId || ''); let retriedBatches = 0;
+    const requestId = String(payload?.requestId || `q-${startedAt}-${Math.random().toString(36).slice(2, 7)}`); let retriedBatches = 0;
+    await diagnostic({ event: 'SUPERSET_QUERY_START', message: 'Mantıksal Superset sorgusu başladı.', requestId, trigger: payload?.triggerType || payload?.trigger || '', measurementCount: uniqueIds(payload).length, totalBatches: groups.length });
     try {
       for (const ids of groups) {
-        if (payload?.mapScopeRequest && cancelledMapRequests.has(requestId)) return cancelledScopeResult(payload, groups, results, startedAt);
+        if (payload?.mapScopeRequest && cancelledMapRequests.has(requestId)) { await diagnostic({ event: 'SUPERSET_QUERY_CANCELLED', level: 'warn', message: 'Kapsam değişikliği nedeniyle Superset sorgusu durduruldu.', requestId, totalBatches: groups.length, batchIndex: results.length, result: 'CANCELLED_SCOPE_CHANGED' }); return cancelledScopeResult(payload, groups, results, startedAt); }
+        const batchStartedAt = Date.now(); await diagnostic({ event: 'SUPERSET_BATCH_START', message: 'Superset batch başladı; batchler sıralı çalışır.', requestId, batchIndex: results.length + 1, totalBatches: groups.length, measurementCount: ids.length });
         results.push(await chartFirst(config, makePayload(ids, config), payload));
         let batchResult = results[results.length - 1];
         if (retryableNetworkFailure(batchResult)) {
-          retriedBatches += 1; await wait(1000);
-          if (payload?.mapScopeRequest && cancelledMapRequests.has(requestId)) return cancelledScopeResult(payload, groups, results, startedAt);
+          retriedBatches += 1; await diagnostic({ event: 'SUPERSET_BATCH_RETRY', level: 'warn', message: 'Network hatası sonrası batch bir kez yeniden denenecek.', requestId, batchIndex: results.length, totalBatches: groups.length, measurementCount: ids.length, durationMs: Date.now() - batchStartedAt, errorType: batchResult.errorType || 'NETWORK_ERROR' }); await wait(1000);
+          if (payload?.mapScopeRequest && cancelledMapRequests.has(requestId)) { await diagnostic({ event: 'SUPERSET_QUERY_CANCELLED', level: 'warn', message: 'Retry öncesi kapsam değişti.', requestId, batchIndex: results.length, totalBatches: groups.length, result: 'CANCELLED_SCOPE_CHANGED' }); return cancelledScopeResult(payload, groups, results, startedAt); }
           batchResult = await chartFirst(config, makePayload(ids, config), payload);
         }
         results[results.length - 1] = batchResult;
+        await diagnostic({ event: batchResult.ok ? 'SUPERSET_BATCH_OK' : 'SUPERSET_BATCH_FAILED', level: batchResult.ok ? 'info' : 'error', message: batchResult.ok ? 'Superset batch tamamlandı.' : 'Superset batch başarısız.', requestId, batchIndex: results.length, totalBatches: groups.length, measurementCount: ids.length, durationMs: Date.now() - batchStartedAt, errorType: batchResult.errorType || null, httpStatus: batchResult.httpStatus || null, authMode: batchResult.authMode || null, result: batchResult.ok ? 'OK' : 'FAILED' });
         status(payload, `Batch ${results.length}/${groups.length} tamamlandi.`, { stage: 'batches', completedBatches: results.length, totalBatches: groups.length });
       }
     } finally {
       cancelledMapRequests.delete(requestId);
     }
     const entries = results.map((result, index) => ({ ids: groups[index], result }));
-    const successful = entries.filter(entry => entry.result.ok); const failed = entries.filter(entry => !entry.result.ok); if (failed.length && !successful.length) return { ...failed[0].result, usedFallback: failed[0].result.authMode === 'hidden-tab', meta: { totalBatches: groups.length, completedBatches: 0, failedBatches: failed.length, retriedBatches, completedMeasurementIds: [], failedMeasurementIds: failed.flatMap(entry => entry.ids), telemetry: { totalFetchDurationMs: Date.now() - startedAt } } };
-    return { ok: true, data: { result: [{ data: successful.flatMap(entry => rowsFrom(entry.result)) }] }, authMode: successful[0]?.result.authMode || 'session', usedFallback: successful.some(entry => entry.result.authMode === 'hidden-tab'), httpStatus: successful[0]?.result.httpStatus || null, meta: { totalBatches: groups.length, completedBatches: successful.length, failedBatches: failed.length, retriedBatches, resultKind: failed.length ? (successful.length ? 'PARTIAL_NETWORK' : 'FAILED') : 'OK', completedMeasurementIds: successful.flatMap(entry => entry.ids), failedMeasurementIds: failed.flatMap(entry => entry.ids), telemetry: { initialBatchCount: groups.length, initialBatchDurationMs: Date.now() - startedAt, missingIdCount: 0, fallbackQueryCount: 0, fallbackDurationMs: 0, recoveredRows: 0, totalFetchDurationMs: Date.now() - startedAt } } };
+    const successful = entries.filter(entry => entry.result.ok); const failed = entries.filter(entry => !entry.result.ok); if (failed.length && !successful.length) { const output = { ...failed[0].result, usedFallback: failed[0].result.authMode === 'hidden-tab', meta: { totalBatches: groups.length, completedBatches: 0, failedBatches: failed.length, retriedBatches, completedMeasurementIds: [], failedMeasurementIds: failed.flatMap(entry => entry.ids), telemetry: { totalFetchDurationMs: Date.now() - startedAt } } }; await diagnostic({ event: 'SUPERSET_QUERY_END', level: 'error', message: 'Superset mantıksal sorgusu başarısız.', requestId, totalBatches: groups.length, result: 'FAILED', errorType: output.errorType || null, durationMs: Date.now() - startedAt }); return output; }
+    const output = { ok: true, data: { result: [{ data: successful.flatMap(entry => rowsFrom(entry.result)) }] }, authMode: successful[0]?.result.authMode || 'session', usedFallback: successful.some(entry => entry.result.authMode === 'hidden-tab'), httpStatus: successful[0]?.result.httpStatus || null, meta: { totalBatches: groups.length, completedBatches: successful.length, failedBatches: failed.length, retriedBatches, resultKind: failed.length ? (successful.length ? 'PARTIAL_NETWORK' : 'FAILED') : 'OK', completedMeasurementIds: successful.flatMap(entry => entry.ids), failedMeasurementIds: failed.flatMap(entry => entry.ids), telemetry: { initialBatchCount: groups.length, initialBatchDurationMs: Date.now() - startedAt, missingIdCount: 0, fallbackQueryCount: 0, fallbackDurationMs: 0, recoveredRows: 0, totalFetchDurationMs: Date.now() - startedAt } } }; await diagnostic({ event: 'SUPERSET_QUERY_END', message: 'Superset mantıksal sorgusu tamamlandı.', requestId, totalBatches: groups.length, returnedRows: rowsFrom(output).length, durationMs: Date.now() - startedAt, result: output.meta.resultKind, authMode: output.authMode }); return output;
   }
   async function cachedCurrent(payload, semantics, executeNetwork, source) {
     const ids = uniqueIds(payload); const startedAt = Date.now(); const cached = LiveCache ? await LiveCache.read(ids, semantics, { forceFresh: Boolean(payload?.forceFresh) }) : { rows: [], reusedIds: [], missingIds: ids }; let network = null; let networkRows = [];

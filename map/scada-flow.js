@@ -189,6 +189,7 @@ function initScadaCard() {
   const switchAuto = card.querySelector('[data-scada-switch="autoRefresh"]');
   const btnRefresh = card.querySelector('[data-scada-btn="refresh"]');
   const btnLog = card.querySelector('[data-scada-btn="log"]');
+  const btnLogCsv = card.querySelector('[data-scada-btn="logcsv"]');
   const btnAudit = card.querySelector('[data-scada-btn="audit"]');
   const btnReport = card.querySelector('[data-scada-btn="report"]');
 
@@ -232,6 +233,7 @@ function initScadaCard() {
   if (btnLog) {
     btnLog.addEventListener('click', toggleScadaLogPanel);
   }
+  if (btnLogCsv) btnLogCsv.addEventListener('click', exportDiagnosticLogCsv);
 
   if (btnAudit) {
     btnAudit.addEventListener('click', exportScadaAuditCsv);
@@ -330,7 +332,10 @@ function toggleScadaLogPanel() {
   panel.className = 'scada-log-panel';
   panel.innerHTML = `
     <div class="scada-log-header">
-      <strong>SCADA Log</strong>
+      <strong>SCADA Tanılama Logu</strong>
+      <select id="scadaLogFilter" class="tiny"><option value="all">Tümü</option><option value="map">Map</option><option value="alarm">Alarm</option><option value="superset">Superset</option><option value="scheduler">Scheduler</option><option value="errors">Error/Warn</option></select>
+      <button id="btnLogCsv" class="tiny">Log CSV</button>
+      <button id="btnLogClear" class="tiny">Logları Temizle</button>
       <button id="btnLogClose" class="tiny">✕</button>
     </div>
     <div id="scadaLogContent" class="scada-log-content"></div>
@@ -338,18 +343,33 @@ function toggleScadaLogPanel() {
   const mapShell = document.querySelector('.map-shell');
   if (mapShell) mapShell.appendChild(panel);
   document.getElementById('btnLogClose').addEventListener('click', () => { panel.classList.add('hidden'); });
+  document.getElementById('scadaLogFilter').addEventListener('change', refreshLogPanel);
+  document.getElementById('btnLogCsv').addEventListener('click', exportDiagnosticLogCsv);
+  document.getElementById('btnLogClear').addEventListener('click', async () => { if (confirm('Yalnız tanılama logları silinsin mi?')) { await chrome.runtime.sendMessage({ type: 'DIAG_LOG_CLEAR' }); refreshLogPanel(); } });
   refreshLogPanel();
 }
 
-function refreshLogPanel() {
+async function refreshLogPanel() {
   const logContent = document.getElementById('scadaLogContent');
   if (!logContent) return;
-  const logs = state.scada.logs || [];
-  logContent.innerHTML = logs.slice(-50).reverse().map(e => {
+  const response = typeof chrome !== 'undefined' ? await chrome.runtime.sendMessage({ type: 'DIAG_LOG_GET' }).catch(() => null) : null;
+  const filter = document.getElementById('scadaLogFilter')?.value || 'all';
+  const logs = response?.ok ? response.logs : (state.scada.logs || []);
+  const filtered = logs.filter(e => filter === 'all' || (filter === 'errors' ? ['error', 'warn'].includes(e.level) : e.subsystem === filter));
+  logContent.innerHTML = filtered.slice(-250).reverse().map(e => {
     const cls = e.level === 'error' ? 'log-error' : e.level === 'warn' ? 'log-warn' : 'log-info';
     const time = WebSCADALogTime.formatScadaLogTime(e.ts);
-    return `<div class="log-entry ${cls}"><span class="log-time">${time}</span> ${e.message}${e.detail ? ` <span class="log-detail">${e.detail}</span>` : ''}</div>`;
+    return `<div class="log-entry ${cls}"><span class="log-time">${time}</span> <b>${e.event || 'LOG'}</b> ${e.message}${e.result ? ` <span class="log-detail">${e.result}</span>` : ''}</div>`;
   }).join('');
+}
+
+async function exportDiagnosticLogCsv() {
+  const response = await chrome.runtime.sendMessage({ type: 'DIAG_LOG_GET' }).catch(() => null);
+  const logs = response?.ok ? response.logs : [];
+  const header = ['Zaman', 'Seviye', 'Kaynak', 'Olay', 'Mesaj', 'Trigger', 'RequestId', 'CycleId', 'Kural', 'Mod', 'Scope', 'Filtre', 'Varlik', 'Olcum', 'Batch', 'ToplamBatch', 'Cache', 'Network', 'Satir', 'SureMs', 'KuyrukMs', 'Sonuc', 'ErrorType', 'HttpStatus', 'AuthMode'];
+  const rows = logs.map(e => [e.ts, e.level, e.subsystem, e.event, e.message, e.trigger, e.requestId, e.cycleId, e.ruleName || e.ruleId, e.mode, e.scopeSummary, e.filterSummary, e.entityCount, e.measurementCount, e.batchIndex, e.totalBatches, e.cacheCount, e.networkCount, e.returnedRows, e.durationMs, e.queueWaitMs, e.result, e.errorType, e.httpStatus, e.authMode]);
+  const pad = value => String(value).padStart(2, '0'); const now = new Date(); const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  downloadScadaCsvFile(`WebSCADA_diagnostic_log_${stamp}.csv`, header, rows);
 }
 
 /* ───────── RANKING PANEL (⚡) ───────── */

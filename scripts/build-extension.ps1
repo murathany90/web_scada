@@ -37,7 +37,7 @@ function Assert-PackagedHtmlAssets([string]$HtmlPath) {
   }
 }
 Get-ChildItem -LiteralPath $unpacked -Filter '*.html' -Recurse -File | ForEach-Object { Assert-PackagedHtmlAssets $_.FullName }
-$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'; $zip = Join-Path $dist "WebSCADA_0.6.10_$stamp.zip"
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'; $zip = Join-Path $dist "WebSCADA_0.6.11_$stamp.zip"
 Push-Location $unpacked
 try { Compress-Archive -Path .\* -DestinationPath $zip -CompressionLevel Optimal } finally { Pop-Location }
 $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)

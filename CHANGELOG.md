@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.11
+
+- Applied service-worker map refresh snapshots directly to the V2 metric/flow state and refreshed the open SCADA ranking panel.
+- Added persistent, redacted diagnostic logs for map, alarm, scheduler, Superset batches, coordinator, and map scope decisions, with in-map filtering, clearing, and CSV export.
+- Made rule-save initial alarm checks awaited and observable instead of detached background promises.
+
 ## 0.6.10
 
 - Normalized map-only viewport sizing, responsive floating panels, and the sidebar toggle position under the global header.

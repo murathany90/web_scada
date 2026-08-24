@@ -1,0 +1,73 @@
+﻿entity_type,old_id,old_name,old_parent_tm,baseline_scada_mapping,new_id_candidate,evidence,migration_status
+Hat,2044,154kV DİYARBAKIR3 - DİYARBAKIR4 - I EİH,DİYARBAKIR3,present,,,unresolved
+Hat,2592,154kV GÜRAĞAÇ - KÜTAHYA EİH,GÜRAĞAÇ,present,,,unresolved
+Hat,2700,154kV KÜTAHYA - ETİ GÜMÜŞ EİH,KÜTAHYA,present,,,unresolved
+Hat,2739,154kV İKİZLER - OSMANİYE OSB EİH,İKİZLER,present,,,unresolved
+Hat,2748,154kV ERZİN - OSMANİYE - II EİH,ERZİN,present,,,unresolved
+Hat,2975,154kV EDİRNE ÇİMENTO - KIRKLARELİ EİH,EDİRNE ÇİMENTO,present,,,unresolved
+Hat,2977,154kV KIRKLARELİ - KIRKLARELİ DGKÇ EİH,KIRKLARELİ,present,,,unresolved
+Hat,3122,154kV MERSİN2 - ERDEMLİ - II EİH,MERSİN2,present,,,unresolved
+Hat,3455,154kV FORD - KARAMÜRSEL EİH,FORD,present,,,unresolved
+Hat,3779,154kV AYANCIK - BOZKURT HAVZA EİH,AYANCIK,present,,,unresolved
+Hat,4027,154kV UŞAK RES -> BANAZ - UŞAK OSB EİH,UŞAK RES,present,,,unresolved
+Hat,4569,154kV KÜÇÜKBAKKALKÖY - KADIKÖY EİH,KÜÇÜKBAKKALKÖY,present,,,unresolved
+Hat,4611,154kV KARAKOÇAN - BİNGÖL - I EİH,KARAKOÇAN,present,,,unresolved
+Hat,4817,154kV UŞAK OSB -> BANAZ - UŞAK RES EİH,UŞAK OSB,present,,,unresolved
+Hat,4905,154kV BANAZ -> UŞAK OSB - UŞAK RES EİH,BANAZ,present,,,unresolved
+Hat,4988,400kV ÜMRANİYE - ATAŞEHİR EİH,ÜMRANİYE,present,,,unresolved
+Hat,5221,154kV PINARHİSAR - KIRKLARELİ EİH,PINARHİSAR,present,,,unresolved
+Hat,5252,154kV TAŞUCU - MERSİN3 EİH,TAŞUCU,present,,,unresolved
+Hat,5421,400kV ÇAN HAVZA - SOMA-B EİH,SOMA B TES,present,,,unresolved
+Hat,5512,154kV HAMİTABAT DGKÇ - KIRKLARELİ DGKÇ EİH,HAMİTABAT DGKÇ,present,,,unresolved
+Hat,5521,154kV GÖNEN - ÇAN HAVZA EİH,GÖNEN,present,,,unresolved
+Hat,5633,154kV MARMARİS1 - MUĞLA GÜNEY EİH,MARMARİS 1,present,,,unresolved
+Hat,5717,154kV META NİKEL - DEMİRCİ EİH,META NİKEL,present,,,unresolved
+Hat,5826,154kV AĞRI1 - İPEKTEPE RES EİH,AĞRI1,present,,,unresolved
+Hat,5873,154kV KARAMÜRSEL -> ÇAKIL RES - GEMLİK EİH,KARAMÜRSEL,present,,,unresolved
+Hat,5906,154kV AFYON2 - UŞAK RES EİH,AFYON2,present,,,unresolved
+Hat,6027,154kV ŞADILLI RES - ASYAPORT LİMAN EİH,ŞADILLI RES,present,,,unresolved
+Hat,6063,154kV YENİ ŞEHİTLİK -> TARSUS MOBİL - NACARLI EİH,YENİ ŞEHİTLİK,present,,,unresolved
+Hat,6064,154kV NACARLI ->TARSUS MOBİL - YENİ ŞEHİTLİK EİH,NACARLI,present,,,unresolved
+Hat,6084,154kV SEYİTÖMER TES - FRİGYA - II EİH,SEYİTÖMER TES,present,,,unresolved
+Hat,6088,154kV KARADENİZ EREĞLİ -> ERDEMİR2 - BÖLÜCEK EİH,KARADENİZ EREĞLİ,present,,,unresolved
+Hat,6340,154kV CEYHAN2 - OSMANİYE2 EİH,CEYHAN2,present,,,unresolved
+Hat,6384,154kV DALAMAN - MUĞLA GÜNEY EİH,DALAMAN,present,6618,name,exact-candidate
+Hat,6387,154kV MARMARA PAMUKLU DGKÇ - TÜRKGÜCÜ EİH,MARMARA PAMUKLU DGKÇ,present,,,unresolved
+Hat,6397,154kV  ÇERKEZKÖY - ULAŞ EİH,ÇERKEZKÖY,present,,,unresolved
+Hat,6527,400kV KÖYLÜKÖY - SOMA B TES EİH,KÖYLÜKÖY,present,6626,name,exact-candidate
+Hat,6531,154kV ANTALYA SERBEST BÖLGE -> OVACIK - FİNİKE EİH,ANTALYA SERBEST BÖLGE,present,,,unresolved
+Hat,6533,154kV FİNİKE -> OVACIK - ANTALYA SERBEST BÖLGE EİH,FİNİKE,present,,,unresolved
+Hat,6556,154kV KAPIÇAM - DDY NARLI EİH,KAPIÇAM,present,,,unresolved
+Hat,6568,400kV MORSAN -> ALİAĞA-2 - SOMA-B EİH,MORSAN,present,,,unresolved
+Hat,6569,400kV ALİAĞA2 -> MORSAN - SOMA-B EİH,ALİAĞA2,present,,,unresolved
+Hat,6570,400kV SOMA-B TES -> ALİAĞA-2 - MORSAN EİH,SOMA B TES,present,,,unresolved
+Trafo,2353,TR-A,ATATÜRK HES,present,19710,parent+name,exact-candidate
+Trafo,2407,A-OTR-4,BAŞKALE,present,19863,parent+name,exact-candidate
+Trafo,2498,A-OTR-1,AFYON2,present,19741,parent+name,exact-candidate
+Trafo,2759,TR-A,BARLA,present,19640,parent+name,exact-candidate
+Trafo,3326,OTR-1,KARADENİZ EREĞLİ,present,,,unresolved
+Trafo,3333,TR-A,KARADENİZ EREĞLİ,present,,,unresolved
+Trafo,3335,TR-B,KARADENİZ EREĞLİ,present,,,unresolved
+Trafo,3584,TR-A,KARAMÜRSEL,present,,,unresolved
+Trafo,3586,TR-B,KARAMÜRSEL,present,,,unresolved
+Trafo,3598,A-OTR-1,OSMANCA,present,19800,parent+name,exact-candidate
+Trafo,3631,TR-A,KÜTAHYA,present,,,unresolved
+Trafo,3799,TR-B,TATVAN,present,19571,parent+name,exact-candidate
+Trafo,4103,TR-A,BUCA,present,,,unresolved
+Trafo,4968,B-OTR-3,AFYON2,present,19580,parent+name,exact-candidate
+Trafo,5032,B-OTR-4,KURŞUNLU,present,19883,parent+name,exact-candidate
+Trafo,5458,TR-B,KÜTAHYA,present,,,unresolved
+Trafo,5925,TR-A,BOZÜYÜK RES,present,19590,parent+name,exact-candidate
+Trafo,5926,TR-B,BOZÜYÜK RES,present,19787,parent+name,exact-candidate
+Trafo,6192,B-OTR-3,BOZOK,present,19665,parent+name,exact-candidate
+Trafo,6591,B-OTR-3,AĞRI2,present,19838,parent+name,exact-candidate
+Trafo,6604,B-OTR-4,BOZOK,present,19693,parent+name,exact-candidate
+Trafo,6667,TR-A,FRİGYA,present,19568,parent+name,exact-candidate
+Trafo,12998,TR-B,HOPA,present,19643,parent+name,exact-candidate
+Trafo,13710,TR-A,ŞARKİKARAAĞAÇ,present,19892,parent+name,exact-candidate
+Bara,4058,154 B-1,KÜTAHYA,present,,,unresolved
+Bara,4312,154 B-1,KARAMÜRSEL,present,,,unresolved
+Bara,4724,154 B-1,KARADENİZ EREĞLİ,present,,,unresolved
+Bara,4726,66 B-1,KARADENİZ EREĞLİ,present,,,unresolved
+Bara,5480,154 B-1,KIRKLARELİ DGKÇ,present,,,unresolved
+Bara,5481,154 B-2,KIRKLARELİ DGKÇ,present,,,unresolved

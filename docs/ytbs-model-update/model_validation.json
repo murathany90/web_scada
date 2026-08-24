@@ -1,0 +1,138 @@
+{
+  "scope": "TM/Hat/Trafo/Bara only",
+  "counts": {
+    "tm": 1608,
+    "hat": 2378,
+    "trafo": 3051,
+    "bara": 6048,
+    "kmlTm": 1608,
+    "kmlHat": 2378,
+    "newActiveScadaRows": 18518
+  },
+  "parentResolution": {
+    "bara:name": 6043,
+    "bara:psse-prefix": 5,
+    "trafo:name": 3049,
+    "trafo:baseline-mapping": 2,
+    "hat-start:name": 2377,
+    "hat-end:name": 2377,
+    "hat-start:kml-endpoint": 1,
+    "hat-end:kml-endpoint": 1
+  },
+  "unresolvedParents": [],
+  "scadaBuild": {
+    "baselineCandidateAssociations": 15981,
+    "baselineCandidatesStillCurrent": 15648,
+    "legacyFallbackCandidates": 333,
+    "newExactAssociationGroups": 12366,
+    "newExactUnmatchedRows": {
+      "reactive": 936,
+      "active": 972,
+      "voltage": 2,
+      "other-prefix": 34
+    }
+  },
+  "parse": "PASS",
+  "duplicateIds": {
+    "tm": [],
+    "hat": [],
+    "trafo": [],
+    "bara": []
+  },
+  "referentialIntegrity": {
+    "orphanHat": [],
+    "orphanTrafo": [],
+    "orphanBara": []
+  },
+  "geometry": {
+    "badHat": [],
+    "badTmCoordinate": []
+  },
+  "scadaCoverage": {
+    "hatActive": {
+      "covered": 2336,
+      "total": 2378,
+      "candidates": 4376
+    },
+    "hatReactive": {
+      "covered": 2337,
+      "total": 2378,
+      "candidates": 4371
+    },
+    "trafoActive": {
+      "covered": 2855,
+      "total": 3051,
+      "candidates": 2924
+    },
+    "trafoReactive": {
+      "covered": 2855,
+      "total": 3051,
+      "candidates": 2925
+    },
+    "baraVoltage": {
+      "covered": 2160,
+      "total": 6048,
+      "candidates": 2178
+    }
+  },
+  "validation": "PASS",
+  "failures": [],
+  "output": "/mnt/data/web_scada_ytbs_current_model_patch/data/kml_layers_v2.json",
+  "sha256": "b4e23ba78a148c108370ee232e5fd916b2773e528593f3e25be695edf226a87e",
+  "bytes": 16868075,
+  "kmlExcelMatch": {
+    "tm": "1608/1608",
+    "hat": "2378/2378",
+    "mismatch": 0
+  },
+  "baselineToNew": {
+    "TM": {
+      "unchanged": 1544,
+      "updated": 27,
+      "added": 37,
+      "removedFromSource": 13
+    },
+    "Bara": {
+      "unchanged": 5886,
+      "updated": 50,
+      "added": 112,
+      "removedFromSource": 24
+    },
+    "Hat": {
+      "unchanged": 2174,
+      "updated": 116,
+      "added": 88,
+      "removedFromSource": 51
+    },
+    "Trafo": {
+      "unchanged": 2783,
+      "updated": 189,
+      "added": 79,
+      "removedFromSource": 29
+    },
+    "totals": {
+      "unchanged": 12387,
+      "updated": 382,
+      "added": 316,
+      "removedFromSource": 117
+    }
+  },
+  "loaderSmoke": {
+    "jsonParse": "PASS",
+    "entityCount": 13085,
+    "badRefsOrGeometry": 0,
+    "compatibleEntityArrays": [
+      "tmPoints",
+      "hatLines",
+      "trafos",
+      "baraNodes"
+    ]
+  },
+  "scadaMigrationAudit": {
+    "baselineMappedMissingInNew": 72,
+    "exactCandidate": 18,
+    "unresolved": 54,
+    "handling": "not auto-migrated; preserved in audit sidecar"
+  },
+  "decision": "PASS_CURRENT_MODEL_SCOPE"
+}

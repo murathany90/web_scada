@@ -18,14 +18,34 @@
     'trafo-trans': 'Trafo (Iletim)',
     voltage: 'Gerilim (kV)'
   };
-  const MVAR_RATIO_THRESHOLDS = [
-    { max: 10, color: '#22c55e', label: '0-10%' },
-    { max: 20, color: '#eab308', label: '10-20%' },
-    { max: 30, color: '#f97316', label: '20-30%' },
-    { max: 40, color: '#ef4444', label: '30-40%' },
-    { max: 60, color: '#dc2626', label: '40-60%' },
-    { max: Infinity, color: '#7c3aed', label: '60%+' }
+  const REACTIVE_REFERENCE_THRESHOLDS = [
+    { max: 50, color: '#22c55e', label: '0-50%' },
+    { max: 75, color: '#eab308', label: '50-75%' },
+    { max: 100, color: '#f97316', label: '75-100%' },
+    { max: 125, color: '#ef4444', label: '100-125%' },
+    { max: 150, color: '#dc2626', label: '125-150%' },
+    { max: Infinity, color: '#7c3aed', label: '150%+' }
   ];
+  const REACTIVE = globalThis.WebSCADAReactive || {
+    normalizeReferences: () => ({ kv154: 120, kv400: 300 }),
+    referenceForKv: (kv) => Number(kv) >= 300 ? 300 : 120,
+    reactiveReferenceRatioPct: (start, end, reference) => {
+      const values = [start, end].map(Number).filter(Number.isFinite).map(Math.abs);
+      return values.length && Number(reference) > 0 ? Math.max(...values) / Number(reference) * 100 : null;
+    },
+    terminalDirectionValue: (normalizedValue, directionValue, side) => {
+      const canonical = Number.isFinite(Number(directionValue)) ? Number(directionValue) : Number(normalizedValue);
+      return Number.isFinite(canonical) ? (side === 'end' ? -canonical : canonical) : null;
+    },
+    terminalArrowDirection: (side, value) => !Number.isFinite(Number(value)) || Number(value) === 0 ? 'unknown' : side === 'start' ? (Number(value) > 0 ? 'forward' : 'reverse') : side === 'end' ? (Number(value) > 0 ? 'reverse' : 'forward') : 'unknown',
+    dominantTerminalSide: (start, end) => !Number.isFinite(Number(start)) && !Number.isFinite(Number(end)) ? '' : (!Number.isFinite(Number(end)) || (Number.isFinite(Number(start)) && Math.abs(Number(start)) >= Math.abs(Number(end))) ? 'start' : 'end'),
+    terminalDirectionsMismatch: (start, end) => {
+      const startDirection = !Number.isFinite(Number(start)) || Number(start) === 0 ? 'unknown' : Number(start) > 0 ? 'forward' : 'reverse';
+      const endDirection = !Number.isFinite(Number(end)) || Number(end) === 0 ? 'unknown' : Number(end) > 0 ? 'reverse' : 'forward';
+      return startDirection !== 'unknown' && endDirection !== 'unknown' && startDirection !== endDirection;
+    },
+    filterTrafosForScada: (entities) => entities || []
+  };
   const INVALID_DISPLAY_THRESHOLD = 300;
   const HAT_VALUE_CAPACITY_MULTIPLIER = 1.5;
   const HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -151,6 +171,26 @@
   state.scada.history = state.scada.history || new Map();
   state.scada.history24hCache = state.scada.history24hCache || new Map();
   state.scada.hatVoltageHistoryCache = state.scada.hatVoltageHistoryCache || new Map();
+  state.scada.reactiveReferences = REACTIVE.normalizeReferences(state.scada.reactiveReferences || {});
+  state.scada.hatReactiveVoltage = state.scada.hatReactiveVoltage || { status: 'idle', scopeSignature: '', byTmKey: new Map() };
+
+  function getHatReactiveReference(entity) {
+    return REACTIVE.referenceForKv(entity?.kvBucket || entity?.kv || entity?.primaryKv, state.scada.reactiveReferences);
+  }
+
+  function applyReactiveReferenceSettings(settings = {}) {
+    state.scada.reactiveReferences = REACTIVE.normalizeReferences(settings);
+    const scope = state.scada.currentScope;
+    if (scope?.mode === 'hat-reactive' && state.scada.measurementRowsById instanceof Map && scope.entities?.length) {
+      applyGenericScadaSnapshot(state.scada.measurementRowsById, scope);
+      requestScadaOverlayRender({ styleOnly: true });
+      if (typeof refreshRankingTable === 'function') refreshRankingTable();
+    }
+  }
+
+  if (globalThis.WebSCADASettings?.load) {
+    void globalThis.WebSCADASettings.load().then(applyReactiveReferenceSettings).catch(() => {});
+  }
   function pruneHistoryCache(cache, nowMs = Date.now()) {
     if (!(cache instanceof Map)) return;
     for (const [key, entry] of cache) {
@@ -299,8 +339,8 @@
     return bucket?.color || (thresholds?.[thresholds.length - 1]?.color ?? SCADA_CONFIG.NO_MATCH_COLOR ?? '#9ca3af');
   }
 
-  function getReactiveRatioColor(ratioPct) {
-    return getThresholdColor(ratioPct, MVAR_RATIO_THRESHOLDS);
+  function getReactiveReferenceColor(referencePct) {
+    return getThresholdColor(referencePct, REACTIVE_REFERENCE_THRESHOLDS);
   }
 
   function getDisplayColor(record, options = {}) {
@@ -317,8 +357,8 @@
       // Gecikmeli veriler threshold rengini korur.
     }
     if (Number.isFinite(record.displayPct)) {
-      return record.displayPctMode === 'reactive-ratio'
-        ? getReactiveRatioColor(record.displayPct)
+      return record.displayPctMode === 'reactive-reference'
+        ? getReactiveReferenceColor(record.displayPct)
         : getFlowColor(record.displayPct);
     }
     if ((record.primaryMetric === 'active' || record.primaryMetric === 'reactive') && Number.isFinite(record.primaryValue)) {
@@ -440,11 +480,10 @@
 
   const METRIC_ELEMENT_BY_TYPE = { voltage: 'U', active: 'P', reactive: 'Q' };
 
-  // Hat MVar colors use the current |Q|/|P| ratio, so a live reactive request
-  // must fetch both metrics. Trafo reactive remains capacity based and only Q.
+  // Hat MVar fixed-reference mode needs only terminal Q values. MW remains a
+  // history/diagnostic metric and must not widen the live Superset scope.
   function getLiveMetricTypes(modeConfig) {
     if (modeConfig.domain === 'bara') return ['voltage'];
-    if (modeConfig.domain === 'hat' && modeConfig.primaryMetric === 'reactive') return ['active', 'reactive'];
     return [modeConfig.primaryMetric];
   }
 
@@ -458,9 +497,14 @@
     return getLiveMetricTypes(modeConfig);
   }
 
+  function getVisibleTrafoEntitiesForScadaScope() {
+    const allVisible = typeof getVisibleTrafoEntities === 'function' ? getVisibleTrafoEntities() : [];
+    return REACTIVE.filterTrafosForScada(allVisible, state.filters.scadaListEntity);
+  }
+
   function getVisibleEntitiesForMode(modeConfig) {
     if (modeConfig.domain === 'hat') return typeof getVisibleHats === 'function' ? getVisibleHats() : [];
-    if (modeConfig.domain === 'trafo') return typeof getVisibleTrafoEntities === 'function' ? getVisibleTrafoEntities() : [];
+    if (modeConfig.domain === 'trafo') return getVisibleTrafoEntitiesForScadaScope();
     const visibleBaras = typeof getVisibleBaras === 'function' ? getVisibleBaras() : [];
     const selectedKv = state.filters.kv instanceof Set
       ? state.filters.kv
@@ -482,6 +526,7 @@
     const elementNames = [...new Set(
       metricTypes.map((metricType) => METRIC_ELEMENT_BY_TYPE[metricType]).filter(Boolean)
     )];
+    const trafoPanelFilter = modeConfig.domain === 'trafo' ? state.filters.scadaListEntity : '';
     return {
       mode: modeConfig.key,
       modeLabel: modeConfig.label,
@@ -491,9 +536,10 @@
       elementNames,
       entities,
       measurementIds: [...measurementIds],
+      trafoPanelFilter,
       filterKey: typeof getScadaVisibilityFilterKey === 'function'
-        ? `${getScadaVisibilityFilterKey()}|mode:${modeConfig.key}`
-        : `mode:${modeConfig.key}`
+        ? `${getScadaVisibilityFilterKey()}|mode:${modeConfig.key}|trafo:${trafoPanelFilter || 'all'}`
+        : `mode:${modeConfig.key}|trafo:${trafoPanelFilter || 'all'}`
     };
   }
 
@@ -610,6 +656,10 @@
       return;
     }
     setScadaPanelPage(1);
+    if ((filter === 'trafo-dist' || filter === 'trafo-trans') && state.scada.enabled) {
+      void syncBackgroundRefreshContext(getCurrentScadaScope());
+      queueScadaScopeFetch({ trigger: 'trafo-class-change' });
+    }
     if (typeof refreshRankingTable === 'function') refreshRankingTable();
   }
 
@@ -1153,14 +1203,6 @@
     return getLoadingHintValue(primaryMetric);
   }
 
-  function computeReactiveRatioPct(resolved) {
-    const reactiveMagnitude = getLoadingHintValue(resolved?.reactive);
-    if (!Number.isFinite(reactiveMagnitude)) return null;
-    const activeMagnitude = getLoadingHintValue(resolved?.active);
-    if (!Number.isFinite(activeMagnitude) || Math.abs(activeMagnitude) < 1) return null;
-    return (Math.abs(reactiveMagnitude) / Math.abs(activeMagnitude)) * 100;
-  }
-
   function isHatMetricValueInvalid(entity, metricType, normalizedValue) {
     const capacityLimit = getCapacityLimit('hat', entity);
     if (!Number.isFinite(capacityLimit) || !Number.isFinite(normalizedValue)) return false;
@@ -1214,27 +1256,31 @@
     }
   }
 
-  function computeHatDisplayMetrics(modeConfig, resolved, loadingPct) {
+  function computeHatDisplayMetrics(modeConfig, resolved, loadingPct, reactiveTerminals, entity) {
     if (modeConfig.primaryMetric === 'reactive') {
-      const ratioPct = computeReactiveRatioPct(resolved);
+      const referenceMvar = getHatReactiveReference(entity);
+      const ratioPct = REACTIVE.reactiveReferenceRatioPct(
+        reactiveTerminals?.start?.terminalValue,
+        reactiveTerminals?.end?.terminalValue,
+        referenceMvar
+      );
       if (!Number.isFinite(ratioPct)) {
-        const activeMagnitude = getLoadingHintValue(resolved?.active);
         return {
           displayPct: null,
           displayPctRaw: null,
-          displayPctMode: 'reactive-ratio',
-          invalidPct: Number.isFinite(getLoadingHintValue(resolved?.reactive)),
-          displayPctReason: Number.isFinite(activeMagnitude) && Math.abs(activeMagnitude) < 1
-            ? 'active-too-low'
-            : ''
+          displayPctMode: 'reactive-reference',
+          invalidPct: false,
+          displayPctReason: 'terminal-q-missing',
+          reactiveReferenceMvar: referenceMvar
         };
       }
       return {
         displayPct: ratioPct,
         displayPctRaw: ratioPct,
-        displayPctMode: 'reactive-ratio',
+        displayPctMode: 'reactive-reference',
         invalidPct: false,
-        displayPctReason: ''
+        displayPctReason: '',
+        reactiveReferenceMvar: referenceMvar
       };
     }
     return {
@@ -1288,10 +1334,10 @@
     return 'orientation-unknown';
   }
 
-  function resolveHatMetric(entity, metricType, candidates) {
+  function resolveHatMetric(entity, metricType, candidates, options = {}) {
     const startAliases = buildTmAliasEntries(entity.startTmRef, entity.startTm || '');
     const endAliases = buildTmAliasEntries(entity.endTmRef, entity.endTm || '');
-    const oriented = candidates.map(({ candidate, row }) => {
+    let oriented = candidates.map(({ candidate, row }) => {
       const formula = Array.isArray(candidate.formulaParts) ? candidate.formulaParts.find((part) => part?.parsed) : null;
       const sign = Number(formula?.sign ?? candidate?.formulaSign);
       const rawValue = Number(row.value);
@@ -1391,6 +1437,7 @@
       const loadingHintValue = Number.isFinite(rawValue)
         ? Math.abs(rawValue * (Number.isFinite(sign) ? sign : 1))
         : null;
+      const terminalValue = REACTIVE.terminalDirectionValue(normalizedValue, directionValue, terminalSide);
       const capacityLimit = getCapacityLimit('hat', entity);
       const valueInvalid = isHatMetricValueInvalid(entity, metricType, normalizedValue);
       return {
@@ -1400,6 +1447,7 @@
         timestamp: row.timestamp,
         rawValue,
         normalizedValue,
+        terminalValue,
         loadingHintValue,
         directionValue,
         formulaSign: Number.isFinite(sign) ? sign : null,
@@ -1424,6 +1472,8 @@
         capacityFilterPassed: metricType === 'active' ? !valueInvalid : null
       };
     }).sort((left, right) => Number(right.timestamp?.getTime?.() || 0) - Number(left.timestamp?.getTime?.() || 0));
+
+    if (options.terminalSide) oriented = oriented.filter((entry) => entry.terminalSide === options.terminalSide);
 
     if (!oriented.length) return null;
     const directionResolved = oriented.filter((entry) => Number.isFinite(entry.normalizedValue));
@@ -1584,7 +1634,7 @@
     return { ...sorted[0], sourceAmbiguous: sorted.length > 1 };
   }
 
-  function resolveMetricCandidate(entityType, entity, metricType, measurementRowsById) {
+  function resolveMetricCandidate(entityType, entity, metricType, measurementRowsById, options = {}) {
     const rows = Array.isArray(entity?.scada?.[metricType]?.rows) ? entity.scada[metricType].rows : [];
     const elementName = metricType === 'active' ? 'P' : (metricType === 'reactive' ? 'Q' : 'U');
     const present = rows.map((candidate) => {
@@ -1596,8 +1646,15 @@
     }).filter((entry) => entry.row);
     if (!present.length) return null;
     return entityType === 'hat'
-      ? resolveHatMetric(entity, metricType, present)
+      ? resolveHatMetric(entity, metricType, present, options)
       : resolveNodeMetric(present);
+  }
+
+  function resolveHatReactiveTerminals(entity, measurementRowsById) {
+    return {
+      start: resolveMetricCandidate('hat', entity, 'reactive', measurementRowsById, { terminalSide: 'start' }),
+      end: resolveMetricCandidate('hat', entity, 'reactive', measurementRowsById, { terminalSide: 'end' })
+    };
   }
 
   function getResolvedMeasurementId(resolved) {
@@ -1675,11 +1732,46 @@
       reactive: entityType !== 'bara' ? resolveMetricCandidate(entityType, entity, 'reactive', measurementRowsById) : null,
       voltage: entityType === 'bara' ? resolveMetricCandidate(entityType, entity, 'voltage', measurementRowsById) : null
     };
+    const reactiveTerminals = entityType === 'hat'
+      ? resolveHatReactiveTerminals(entity, measurementRowsById)
+      : null;
+    const reactiveTerminalRecords = reactiveTerminals ? Object.fromEntries(['start', 'end'].map((side) => {
+      const terminal = reactiveTerminals[side];
+      const directionValue = REACTIVE.terminalDirectionValue(terminal?.normalizedValue, terminal?.directionValue, side);
+      return [side, terminal ? {
+        side,
+        terminalValue: directionValue,
+        directionValue,
+        normalizedValue: Number.isFinite(Number(terminal.normalizedValue)) ? Number(terminal.normalizedValue) : null,
+        measurementId: getResolvedMeasurementId(terminal),
+        timestamp: terminal.timestamp || null,
+        rawValue: Number.isFinite(Number(terminal.rawValue)) ? Number(terminal.rawValue) : null,
+        formulaSign: Number.isFinite(Number(terminal.formulaSign)) ? Number(terminal.formulaSign) : null,
+        valueInvalid: Boolean(terminal.valueInvalid),
+        arrowDirection: REACTIVE.terminalArrowDirection(side, directionValue),
+        ...getMetricDebugFields(terminal)
+      } : null];
+    })) : null;
+    const dominantReactiveTerminalSide = REACTIVE.dominantTerminalSide(
+      reactiveTerminalRecords?.start?.terminalValue,
+      reactiveTerminalRecords?.end?.terminalValue
+    );
+    const dominantReactiveTerminal = dominantReactiveTerminalSide ? reactiveTerminalRecords?.[dominantReactiveTerminalSide] : null;
+    const terminalDirectionMismatch = !reactiveTerminalRecords?.start?.valueInvalid
+      && !reactiveTerminalRecords?.end?.valueInvalid
+      && REACTIVE.terminalDirectionsMismatch(
+        reactiveTerminalRecords?.start?.terminalValue,
+        reactiveTerminalRecords?.end?.terminalValue
+      );
     const primaryMetric = resolved[modeConfig.primaryMetric];
-    const primaryTimestamp = primaryMetric?.timestamp || resolved.active?.timestamp || resolved.reactive?.timestamp || resolved.voltage?.timestamp || null;
+    const isHatReactive = entityType === 'hat' && modeConfig.primaryMetric === 'reactive';
+    const primaryTimestamp = (isHatReactive ? dominantReactiveTerminal?.timestamp : null)
+      || primaryMetric?.timestamp || resolved.active?.timestamp || resolved.reactive?.timestamp || resolved.voltage?.timestamp || null;
     const primaryStaleState = getStaleState(primaryTimestamp);
     const capacityMva = getCapacityMva(entityType, entity);
-    const primaryValue = primaryMetric?.normalizedValue;
+    const primaryValue = isHatReactive && Number.isFinite(Number(dominantReactiveTerminal?.terminalValue))
+      ? Number(dominantReactiveTerminal.terminalValue)
+      : primaryMetric?.normalizedValue;
     const loadingMagnitude = capacityMva
       ? computeLoadingMagnitude(entityType, resolved)
       : null;
@@ -1687,7 +1779,7 @@
       ? (loadingMagnitude / capacityMva) * 100
       : null;
     const displayMetrics = entityType === 'hat'
-      ? computeHatDisplayMetrics(modeConfig, resolved, loadingPct)
+      ? computeHatDisplayMetrics(modeConfig, resolved, loadingPct, reactiveTerminals, entity)
       : {
         displayPct: Number.isFinite(loadingPct) ? loadingPct : null,
         displayPctRaw: Number.isFinite(loadingPct) ? loadingPct : null,
@@ -1746,6 +1838,11 @@
         valueInvalid: Boolean(resolved.reactive.valueInvalid),
         ...getMetricDebugFields(resolved.reactive)
       } : null,
+      reactiveTerminals: reactiveTerminalRecords,
+      dominantReactiveTerminalSide,
+      dominantReactiveValue: Number.isFinite(Number(dominantReactiveTerminal?.terminalValue)) ? Number(dominantReactiveTerminal.terminalValue) : null,
+      dominantReactiveTimestamp: dominantReactiveTerminal?.timestamp || null,
+      terminalDirectionMismatch,
       voltage: resolved.voltage ? {
         value: resolved.voltage.normalizedValue,
         measurementId: getResolvedMeasurementId(resolved.voltage),
@@ -1789,6 +1886,7 @@
       displayPctMode: displayMetrics.displayPctMode,
       invalidPct: Boolean(displayMetrics.invalidPct),
       displayPctReason: displayMetrics.displayPctReason || '',
+      reactiveReferenceMvar: Number.isFinite(Number(displayMetrics.reactiveReferenceMvar)) ? Number(displayMetrics.reactiveReferenceMvar) : null,
       timeState: primaryStaleState,
       timeStateLabel: primaryStatusText,
       ageLabel: getAgeLabel(primaryTimestamp)
@@ -1844,6 +1942,15 @@
       next.set(record.entityId, {
         mw: Number.isFinite(record.active?.value) ? record.active.value : 0,
         mvar: Number.isFinite(record.reactive?.value) ? record.reactive.value : 0,
+        qStart: Number.isFinite(record.reactiveTerminals?.start?.terminalValue) ? record.reactiveTerminals.start.terminalValue : null,
+        qEnd: Number.isFinite(record.reactiveTerminals?.end?.terminalValue) ? record.reactiveTerminals.end.terminalValue : null,
+        reactiveReferenceMvar: Number.isFinite(record.reactiveReferenceMvar) ? record.reactiveReferenceMvar : null,
+        terminalArrows: record.reactiveTerminals ? ['start', 'end'].map((side) => ({
+          side,
+          value: record.reactiveTerminals[side]?.terminalValue ?? null,
+          direction: record.reactiveTerminals[side]?.arrowDirection || 'unknown',
+          measurementId: record.reactiveTerminals[side]?.measurementId || ''
+        })) : [],
         primaryValue: value,
         primaryUnit: getMetricUnit(modeConfig.primaryMetric),
         loadingPct,
@@ -2056,6 +2163,157 @@
       duplicates: visibleSummary.ambiguousLive
     };
     return visibleSummary;
+  }
+
+  function hatReactiveTmKeys(tmRef, fallbackName = '') {
+    const keys = [];
+    const id = String(tmRef?.id || '').trim();
+    const name = String(tmRef?.name || fallbackName || '').trim();
+    if (id) keys.push(`id:${id}`);
+    if (name) keys.push(`name:${normalizeText(name)}`);
+    return keys;
+  }
+
+  function hatReactiveVoltageLevel(value) {
+    const matched = String(value ?? '').match(/\d+(?:\.\d+)?/);
+    return matched ? String(Math.round(Number(matched[0]))) : '';
+  }
+
+  function hatReactiveVoltageTmKey(tmRef, fallbackName = '', voltageLevel = '') {
+    const tmKey = hatReactiveTmKeys(tmRef, fallbackName)[0] || '';
+    const level = hatReactiveVoltageLevel(voltageLevel);
+    return tmKey && level ? `${tmKey}|kv:${level}` : '';
+  }
+
+  function buildHatReactiveVoltageScope(hatScope) {
+    const endpointLevels = new Map();
+    (hatScope?.entities || []).forEach((hat) => {
+      const level = hatReactiveVoltageLevel(hat.kvBucket || hat.kv);
+      if (!['154', '400'].includes(level)) return;
+      [[hat.startTmRef, hat.startTm], [hat.endTmRef, hat.endTm]].forEach(([tmRef, tmName]) => {
+        hatReactiveTmKeys(tmRef, tmName).forEach((key) => {
+          if (!endpointLevels.has(key)) endpointLevels.set(key, new Set());
+          endpointLevels.get(key).add(level);
+        });
+      });
+    });
+    const baras = (typeof getVisibleBaras === 'function' ? getVisibleBaras() : []).filter((bara) => {
+      const level = hatReactiveVoltageLevel(bara.kvBucket || bara.gerilimKv);
+      return hatReactiveTmKeys(bara.tm || null, bara.tmName).some((key) => endpointLevels.get(key)?.has(level));
+    });
+    const measurementIds = [...new Set(baras.flatMap((bara) => bara?.scada?.voltage?.ids || []).map(String).filter(Boolean))];
+    return {
+      mode: 'hat-reactive-voltage',
+      modeLabel: 'Hat (MVar) TM Gerilimleri',
+      domain: 'bara',
+      primaryMetric: 'voltage',
+      metricTypes: ['voltage'],
+      elementNames: ['U'],
+      entities: baras,
+      measurementIds,
+      parentScopeSignature: hatScope?.scopeSignature || '',
+      filterKey: `${hatScope?.filterKey || ''}|stage:voltage`
+    };
+  }
+
+  function isHatReactiveVoltageScopeCurrent(parentScopeSignature, fetchSeq) {
+    const scope = getCurrentScadaScope();
+    return scope.mode === 'hat-reactive'
+      && getScadaScopeSignature(scope) === parentScopeSignature
+      && state.scada.fetchSeq === fetchSeq;
+  }
+
+  function selectHatReactiveVoltages(voltageScope, measurementRowsById) {
+    const byTmKey = new Map();
+    voltageScope.entities.forEach((bara) => {
+      const record = buildEntityMetricRecord('bara', bara, METRIC_MODES.voltage, measurementRowsById);
+      if (!Number.isFinite(record.primaryValue) || isTransferBaraForVoltagePanel(bara)) return;
+      const level = hatReactiveVoltageLevel(bara.kvBucket || bara.gerilimKv);
+      const tmKey = hatReactiveVoltageTmKey(bara.tm || null, bara.tmName, level);
+      const candidate = { entity: bara, record, voltageLevel: level };
+      if (tmKey && isBetterVoltagePanelRepresentative(candidate, byTmKey.get(tmKey))) byTmKey.set(tmKey, candidate);
+    });
+    return byTmKey;
+  }
+
+  function getHatReactiveVoltagesForTm(tm, fallbackName = '') {
+    if (state.filters.scadaMetric !== 'hat-reactive') return null;
+    const staged = state.scada.hatReactiveVoltage || {};
+    const currentScope = getCurrentScadaScope();
+    if (staged.scopeSignature !== getScadaScopeSignature(currentScope)) return null;
+    const byTmKey = staged.byTmKey;
+    if (!(byTmKey instanceof Map)) return [];
+    const tmKeys = hatReactiveTmKeys(tm, fallbackName || tm?.name);
+    const matches = [];
+    tmKeys.forEach((tmKey) => {
+      byTmKey.forEach((candidate, key) => {
+        if (key.startsWith(`${tmKey}|kv:`) && !matches.includes(candidate)) matches.push(candidate);
+      });
+    });
+    return matches.sort((left, right) => Number(left.voltageLevel || 0) - Number(right.voltageLevel || 0)
+      || String(left.entity?.id || '').localeCompare(String(right.entity?.id || '')));
+  }
+
+  function getHatReactiveVoltageForTm(tm, fallbackName = '', voltageLevel = '') {
+    const level = hatReactiveVoltageLevel(voltageLevel);
+    const matches = getHatReactiveVoltagesForTm(tm, fallbackName);
+    if (!matches?.length) return null;
+    return level ? matches.find((candidate) => candidate.voltageLevel === level) || null : matches[0];
+  }
+
+  async function queueHatReactiveVoltageFetch(hatScope, requestContext, options = {}) {
+    const voltageScope = buildHatReactiveVoltageScope(hatScope);
+    state.scada.hatReactiveVoltage = {
+      status: voltageScope.measurementIds.length ? 'queued' : 'empty',
+      scopeSignature: requestContext.scopeSignature,
+      byTmKey: new Map(),
+      error: ''
+    };
+    if (!voltageScope.measurementIds.length) return { ok: true, skipped: 'no-voltage-measurements' };
+    try {
+      const result = await chrome.runtime.sendMessage({
+        type: 'SCADA_FETCH',
+        payload: {
+          baseUrl: SCADA_CONFIG.SUPERSET_ORIGIN,
+          dashboardId: SCADA_CONFIG.DASHBOARD_ID,
+          chartSliceId: SCADA_CONFIG.CHART_SLICE_ID,
+          datasourceId: SCADA_CONFIG.DATASOURCE_ID,
+          timeRange: SCADA_CONFIG.LIVE_WINDOW_TIME_RANGE,
+          kvFilters: [],
+          tearFilters: [],
+          elementNames: voltageScope.elementNames,
+          measurementIds: voltageScope.measurementIds,
+          requestId: `${requestContext.requestId}:voltage`,
+          triggerType: 'hat-reactive-voltage',
+          scopeSignature: voltageScope.parentScopeSignature,
+          mapScopeRequest: false,
+          liveCacheSemantics: 'map-aggregate',
+          forceFresh: Boolean(options.forceFresh)
+        }
+      });
+      if (!isHatReactiveVoltageScopeCurrent(requestContext.scopeSignature, requestContext.fetchSeq)) return { ok: false, discarded: true };
+      if (!result?.ok) {
+        state.scada.hatReactiveVoltage = { status: 'error', scopeSignature: requestContext.scopeSignature, byTmKey: new Map(), error: result?.error || 'Gerilim verisi alınamadı.' };
+        requestScadaOverlayRender({ styleOnly: true });
+        return { ok: false, error: result?.error || 'Gerilim verisi alınamadı.' };
+      }
+      const rowsByMeasurementId = SCADA_COMMON.normalizeMetricRows(result.data, { elementNames: voltageScope.elementNames });
+      if (!isHatReactiveVoltageScopeCurrent(requestContext.scopeSignature, requestContext.fetchSeq)) return { ok: false, discarded: true };
+      state.scada.hatReactiveVoltage = {
+        status: 'success',
+        scopeSignature: requestContext.scopeSignature,
+        byTmKey: selectHatReactiveVoltages(voltageScope, rowsByMeasurementId),
+        error: ''
+      };
+      requestScadaOverlayRender({ styleOnly: true });
+      refreshOpenHatReactiveDetails();
+      return { ok: true, count: state.scada.hatReactiveVoltage.byTmKey.size };
+    } catch (error) {
+      if (!isHatReactiveVoltageScopeCurrent(requestContext.scopeSignature, requestContext.fetchSeq)) return { ok: false, discarded: true };
+      state.scada.hatReactiveVoltage = { status: 'error', scopeSignature: requestContext.scopeSignature, byTmKey: new Map(), error: error?.message || String(error) };
+      requestScadaOverlayRender({ styleOnly: true });
+      return { ok: false, error: error?.message || String(error) };
+    }
   }
 
   refreshScadaVisibleSummary = function () {
@@ -3055,6 +3313,13 @@ try {
       state.scada.snapshotAt = null;
       // Style-only render: update flow arrows and SCADA card without full geometry rebuild
       if (typeof requestScadaOverlayRender === 'function') requestScadaOverlayRender({ styleOnly: true });
+      // Hat (MVar) is a two-stage view: Q terminals render first, then the
+      // lower-priority U/kV request joins the same background coordinator queue.
+      // Never await this request here; a late or failed voltage response must
+      // not delay or invalidate the already-rendered MVar map.
+      if (scope.mode === 'hat-reactive') {
+        void queueHatReactiveVoltageFetch(scope, requestContext, { forceFresh: triggerType === 'manual' || Boolean(options.forceFresh) });
+      }
       setScadaOperationMeta({
         stage: 'done',
         progressPct: 100,
@@ -3215,7 +3480,7 @@ try {
       });
       return counts;
     }
-    const thresholds = modeConfig.primaryMetric === 'reactive' ? MVAR_RATIO_THRESHOLDS : SCADA_CONFIG.LOADING_THRESHOLDS;
+    const thresholds = modeConfig.primaryMetric === 'reactive' ? REACTIVE_REFERENCE_THRESHOLDS : SCADA_CONFIG.LOADING_THRESHOLDS;
     const counts = thresholds.map((threshold) => ({
       label: threshold.label,
       color: threshold.color,
@@ -3588,13 +3853,18 @@ try {
     const fields = [];
     if (record.active?.valueInvalid) fields.push(['Aktif Guc (MW)', '!']);
     else if (Number.isFinite(record.active?.value)) fields.push(['Aktif Guc (MW)', `${record.active.value >= 0 ? '+' : ''}${record.active.value.toFixed(1)}`]);
-    if (record.reactive?.valueInvalid) fields.push(['Reaktif Guc (MVar)', '!']);
+    if (record.reactiveTerminals) {
+      const start = record.reactiveTerminals.start?.terminalValue;
+      const end = record.reactiveTerminals.end?.terminalValue;
+      fields.push([`${hatRow.startTm || 'Başlangıç'} MVar`, Number.isFinite(start) ? `${start >= 0 ? '+' : ''}${start.toFixed(1)}` : '—']);
+      fields.push([`${hatRow.endTm || 'Bitiş'} MVar`, Number.isFinite(end) ? `${end >= 0 ? '+' : ''}${end.toFixed(1)}` : '—']);
+    } else if (record.reactive?.valueInvalid) fields.push(['Reaktif Guc (MVar)', '!']);
     else if (Number.isFinite(record.reactive?.value)) fields.push(['Reaktif Guc (MVar)', `${record.reactive.value >= 0 ? '+' : ''}${record.reactive.value.toFixed(1)}`]);
-    if (record.invalidPct) fields.push([record.displayPctMode === 'reactive-ratio' ? 'MVar/MW Orani' : 'Yuklenme', '!']);
+    if (record.invalidPct) fields.push([record.displayPctMode === 'reactive-reference' ? 'Reaktif Referans (%)' : 'Yuklenme', '!']);
     else if (Number.isFinite(record.displayPct)) {
       fields.push([
-        record.displayPctMode === 'reactive-ratio' ? 'MVar/MW Orani' : 'Yuklenme',
-        `${record.displayPct.toFixed(1)}%${record.displayPctMode === 'loading' ? ` (${formatNumber(record.capacityMva, ' MVA')})` : ''}`
+        record.displayPctMode === 'reactive-reference' ? 'Reaktif Referans (%)' : 'Yuklenme',
+        `${record.displayPct.toFixed(1)}%${record.displayPctMode === 'reactive-reference' ? ` (${formatNumber(record.reactiveReferenceMvar, ' MVar')})` : record.displayPctMode === 'loading' ? ` (${formatNumber(record.capacityMva, ' MVA')})` : ''}`
       ]);
     }
     if (record.primaryTimestamp) fields.push(['Olcum Zamani', `${record.primaryTimestamp.toLocaleDateString('tr-TR')} ${record.primaryTimestamp.toLocaleTimeString('tr-TR')}`]);
@@ -3704,7 +3974,7 @@ try {
   function buildHatPopupModel(hat) {
     const record = state.scada.entityMetricsByKey.get(`hat:${hat.id}`);
     const directionText = buildHatDirectionText(hat, record);
-    const pctLabel = record?.displayPctMode === 'reactive-ratio' ? 'MVar/MW Orani' : 'Yuklenme';
+    const pctLabel = record?.displayPctMode === 'reactive-reference' ? 'Reaktif Referans (%)' : 'Yuklenme';
     const pctValue = record?.invalidPct
       ? '!'
       : Number.isFinite(record?.displayPct)
@@ -3714,17 +3984,51 @@ try {
       ['Uzunluk', formatNumber(hat.lengthKm, ' km')],
       ['Kapasite', formatNumber(getCapacityMva('hat', hat), ' MVA')],
       ['Aktif Guc (MW)', record?.active?.valueInvalid ? '!' : Number.isFinite(record?.active?.value) ? `${record.active.value >= 0 ? '+' : ''}${record.active.value.toFixed(1)}` : '-'],
-      ['Reaktif Guc (MVar)', record?.reactive?.valueInvalid ? '!' : Number.isFinite(record?.reactive?.value) ? `${record.reactive.value >= 0 ? '+' : ''}${record.reactive.value.toFixed(1)}` : '-'],
+      [`${hat.startTm || 'Başlangıç'} MVar`, Number.isFinite(record?.reactiveTerminals?.start?.terminalValue) ? `${record.reactiveTerminals.start.terminalValue >= 0 ? '+' : ''}${record.reactiveTerminals.start.terminalValue.toFixed(1)}` : '-'],
+      [`${hat.endTm || 'Bitiş'} MVar`, Number.isFinite(record?.reactiveTerminals?.end?.terminalValue) ? `${record.reactiveTerminals.end.terminalValue >= 0 ? '+' : ''}${record.reactiveTerminals.end.terminalValue.toFixed(1)}` : '-'],
       [pctLabel, pctValue],
+      ...(record?.displayPctMode === 'reactive-reference' ? [['Referans', `${Number.isFinite(record.reactiveReferenceMvar) ? record.reactiveReferenceMvar.toFixed(0) : '-'} MVar`]] : []),
       ['Akis Yonu', directionText],
       ['Olcum Zamani', record?.primaryTimestamp ? record.primaryTimestamp.toLocaleTimeString('tr-TR') : '-']
     ];
+    if (record?.displayPctMode === 'reactive-reference') {
+      const formatMeasurementTime = (timestamp) => {
+        if (!(timestamp instanceof Date) || Number.isNaN(timestamp.getTime())) return '—';
+        const pad = (value) => String(value).padStart(2, '0');
+        return `${pad(timestamp.getDate())}.${pad(timestamp.getMonth() + 1)}.${timestamp.getFullYear()} ${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}`;
+      };
+      const terminalFields = (side, tmRef, tmName) => {
+        const terminal = record?.reactiveTerminals?.[side] || null;
+        const qValue = !terminal?.valueInvalid && Number.isFinite(terminal?.terminalValue)
+          ? `${terminal.terminalValue >= 0 ? '+' : ''}${terminal.terminalValue.toFixed(1)} MVar`
+          : '—';
+        const voltage = getHatReactiveVoltageForTm(tmRef, tmName, hat.kvBucket || hat.kv);
+        const uValue = Number.isFinite(voltage?.record?.primaryValue)
+          ? `${voltage.record.primaryValue.toFixed(1)} kV`
+          : '—';
+        const label = tmName || (side === 'start' ? 'Başlangıç' : 'Bitiş');
+        return [
+          [`${label} Q`, qValue],
+          [`${label} Q zamanı`, formatMeasurementTime(terminal?.timestamp)],
+          [`${label} U`, uValue],
+          [`${label} U zamanı`, formatMeasurementTime(voltage?.record?.primaryTimestamp)]
+        ];
+      };
+      compactFields.splice(2, compactFields.length - 2,
+        ...terminalFields('start', hat.startTmRef, hat.startTm),
+        ...terminalFields('end', hat.endTmRef, hat.endTm),
+        ['Reaktif Referans', `${pctValue} (${Number.isFinite(record.reactiveReferenceMvar) ? record.reactiveReferenceMvar.toFixed(0) : '—'} MVar)`],
+        ['Akış Yönü', directionText]
+      );
+    }
     const detailFields = [
       ['Hat ID', hat.kmlDescriptionId || '-'],
       ['YTM', (hat.ytmNames || []).join(' / ') || '-'],
       ['Hat Kesit', formatKesit(hat.characteristic || '-')],
       ['Aktif Olcum ID', record?.active?.measurementId || '-'],
       ['Reaktif Olcum ID', record?.reactive?.measurementId || '-'],
+      ['Başlangıç Reaktif Ölçüm ID', record?.reactiveTerminals?.start?.measurementId || '-'],
+      ['Bitiş Reaktif Ölçüm ID', record?.reactiveTerminals?.end?.measurementId || '-'],
       ['Veri Durumu', record?.primaryStatusText || '-'],
       ['Yon Cozumleme', record?.directionResolvedBy || '-'],
       ['Alias Eslesme', record?.aliasMatchBasis || '-'],
@@ -3745,6 +4049,14 @@ try {
       detailFields,
       detailExtraHtml: `${renderHatMeasurementCard(record)}${renderHatUncertaintyCard(record)}`
     };
+  }
+
+  function refreshOpenHatReactiveDetails() {
+    const popup = state.ui.activeEntityPopup;
+    if (state.filters.scadaMetric !== 'hat-reactive' || popup?.entityType !== 'hat' || !popup.entityId) return;
+    const hat = (typeof getVisibleHats === 'function' ? getVisibleHats() : []).find((row) => String(row.id) === String(popup.entityId));
+    if (!hat) return;
+    openScadaHatDetails(hat, { anchorCoord: popup.anchorCoord, expanded: Boolean(popup.expanded) });
   }
 
   openScadaHatDetails = function (hat, options = {}) {
@@ -5793,18 +6105,20 @@ function _formatHistoryAxisLabel(timestampMs) {
           name: hat.name,
           km: hat.lengthKm || 0,
           tmName: `${hat.startTm || '-'} -> ${hat.endTm || '-'}`,
-          timestamp: record?.primaryTimestamp || null,
+          timestamp: record?.dominantReactiveTimestamp || record?.primaryTimestamp || null,
           mw: record?.active?.value,
-          mvar: record?.reactive?.value,
+          mvar: record?.dominantReactiveValue,
+          mvarStart: record?.reactiveTerminals?.start?.terminalValue,
+          mvarEnd: record?.reactiveTerminals?.end?.terminalValue,
+          terminalDirectionMismatch: Boolean(record?.terminalDirectionMismatch),
+          reactiveReferenceMvar: record?.reactiveReferenceMvar,
           pct: record?.displayPct,
           pctRaw: record?.displayPctRaw,
           invalidPct: Boolean(record?.invalidPct)
         }, record));
       });
     } else if (filter === 'trafo-dist' || filter === 'trafo-trans') {
-      const source = filter === 'trafo-dist'
-        ? (typeof getVisibleTrafoDist === 'function' ? getVisibleTrafoDist() : [])
-        : (typeof getVisibleTrafoTransmission === 'function' ? getVisibleTrafoTransmission() : []);
+      const source = getVisibleTrafoEntitiesForScadaScope();
       source.forEach((trafo) => {
         const record = state.scada.entityMetricsByKey.get(`trafo:${trafo.id}`);
         const capacityMva = getCapacityMva('trafo', trafo);
@@ -5863,8 +6177,8 @@ function _formatHistoryAxisLabel(timestampMs) {
           rightValue = Number(right.timestamp?.getTime?.() || 0);
           break;
         case 'mvar':
-          leftValue = Math.abs(Number(left.mvar || 0));
-          rightValue = Math.abs(Number(right.mvar || 0));
+          leftValue = Math.max(Math.abs(Number(left.mvarStart ?? left.mvar ?? 0)), Math.abs(Number(left.mvarEnd ?? left.mvar ?? 0)));
+          rightValue = Math.max(Math.abs(Number(right.mvarStart ?? right.mvar ?? 0)), Math.abs(Number(right.mvarEnd ?? right.mvar ?? 0)));
           break;
         case 'mw':
           leftValue = Math.abs(Number(left.mw || 0));
@@ -5921,6 +6235,7 @@ function _formatHistoryAxisLabel(timestampMs) {
 
   function renderRankingHeader() {
     const filter = rankingState.entityFilter;
+    const reactiveHat = filter === 'hat' && getModeConfig().key === 'hat-reactive';
     if (filter === 'hat') {
       return `
         <thead><tr>
@@ -5930,7 +6245,7 @@ function _formatHistoryAxisLabel(timestampMs) {
           <th class="col-ts" data-sort="timestamp">Zaman</th>
           <th class="col-mw" data-sort="mw">MW</th>
           <th class="col-mvar" data-sort="mvar">MVAR</th>
-          <th class="col-pct" data-sort="score">%</th>
+          <th class="col-pct" data-sort="score">${reactiveHat ? 'Reaktif Ref. %' : '%'}</th>
           <th class="col-hist" title="Son 24 saat grafiğini göster"></th>
         </tr></thead>
       `;
@@ -6048,8 +6363,8 @@ function _formatHistoryAxisLabel(timestampMs) {
           ? (SCADA_CONFIG.NO_MATCH_COLOR || '#9ca3af')
           : row.invalidPct
           ? (SCADA_CONFIG.NO_MATCH_COLOR || '#9ca3af')
-          : row.displayPctMode === 'reactive-ratio'
-            ? getReactiveRatioColor(Number.isFinite(row.pct) ? row.pct : 0)
+          : row.displayPctMode === 'reactive-reference'
+            ? getReactiveReferenceColor(Number.isFinite(row.pct) ? row.pct : 0)
             : (Number.isFinite(row.pct) ? getFlowColor(row.pct) : '#4b5563');
         const pctTextColor = getReadableTextColor(pctColor);
         const statusDot = `<span class="status-dot ${escapeHtml(row.statusDotTone || 'is-missing')}" title="${escapeHtml(row.statusDotTooltip || 'Durum bilgisi yok')}" aria-label="${escapeHtml(row.statusDotTooltip || 'Durum bilgisi yok')}">&#9679;</span>`;
@@ -6061,7 +6376,7 @@ function _formatHistoryAxisLabel(timestampMs) {
             <td class="col-km">${Number.isFinite(row.km) ? row.km.toFixed(0) : '&mdash;'}</td>
             <td class="col-ts">${renderPanelTimeCell(row)}</td>
             <td class="col-mw">${row.mwInvalid ? '!' : Number.isFinite(row.mw) ? `${row.mw >= 0 ? '+' : ''}${row.mw.toFixed(1)}` : '&mdash;'}</td>
-            <td class="col-mvar">${row.mvarInvalid ? '!' : Number.isFinite(row.mvar) ? `${row.mvar >= 0 ? '+' : ''}${row.mvar.toFixed(1)}` : '-'}</td>
+            <td class="col-mvar">${row.mvarInvalid ? '!' : Number.isFinite(row.mvar) ? `${row.mvar >= 0 ? '+' : ''}${row.mvar.toFixed(1)}${row.terminalDirectionMismatch ? ' <span class="ranking-terminal-warning" title="Terminal MVar yönleri uyumsuz" aria-label="Terminal MVar yönleri uyumsuz">!</span>' : ''}` : '-'}</td>
             <td class="col-pct"><span class="ranking-pct-cell${row.invalidPct ? ' is-invalid' : ''}" style="background:${pctColor};color:${pctTextColor}">${pctText}</span></td>
             <td class="col-hist"><button type="button" class="btn-history" data-history-entity="${row.entityKey}" title="Son 24 saat grafiğini göster" aria-label="Son 24 saat grafiğini göster">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:auto;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
@@ -7175,6 +7490,100 @@ function _formatHistoryAxisLabel(timestampMs) {
     node.dataset.renderKey = `${pathData}|${arrowColor}|${duration}`;
   }
 
+  function buildHatScreenPolyline(row) {
+    if (state.filters.hatDisplayMode === 'sade' || state.filters.hatDisplayMode === 'sade-ayrik') {
+      const startTm = state.network.tmMap.get(row.startTm);
+      const endTm = state.network.tmMap.get(row.endTm);
+      const firstCoord = row.coords?.[0];
+      const lastCoord = row.coords?.[row.coords.length - 1];
+      if (!firstCoord || !lastCoord) return [];
+      const start = startTm ? screenPoint(startTm.lon, startTm.lat) : screenPoint(firstCoord[0], firstCoord[1]);
+      const end = endTm ? screenPoint(endTm.lon, endTm.lat) : screenPoint(lastCoord[0], lastCoord[1]);
+      return [start, end];
+    }
+    return (row.coords || []).map((coord) => screenPoint(coord[0], coord[1]));
+  }
+
+  function pointAlongHatPolyline(points, ratio) {
+    if (!Array.isArray(points) || points.length < 2) return null;
+    const segments = [];
+    let total = 0;
+    for (let index = 1; index < points.length; index += 1) {
+      const from = points[index - 1], to = points[index];
+      const length = Math.hypot(to.x - from.x, to.y - from.y);
+      if (!length) continue;
+      segments.push({ from, to, length });
+      total += length;
+    }
+    if (!total) return null;
+    let remaining = Math.max(0, Math.min(1, ratio)) * total;
+    for (const segment of segments) {
+      if (remaining > segment.length) {
+        remaining -= segment.length;
+        continue;
+      }
+      const part = remaining / segment.length;
+      return {
+        x: segment.from.x + (segment.to.x - segment.from.x) * part,
+        y: segment.from.y + (segment.to.y - segment.from.y) * part,
+        dx: (segment.to.x - segment.from.x) / segment.length,
+        dy: (segment.to.y - segment.from.y) / segment.length
+      };
+    }
+    const last = segments[segments.length - 1];
+    return { x: last.to.x, y: last.to.y, dx: (last.to.x - last.from.x) / last.length, dy: (last.to.y - last.from.y) / last.length };
+  }
+
+  function formatReactiveTerminalValue(value) {
+    return Number.isFinite(Number(value)) ? `${Number(value) >= 0 ? '+' : ''}${Number(value).toFixed(1)} MVar` : '—';
+  }
+
+  function buildReactiveTerminalTooltip(row, flow) {
+    const reference = Number.isFinite(flow.reactiveReferenceMvar) ? `Reaktif Referans: %${Number(flow.displayPct).toFixed(1)} · ${flow.reactiveReferenceMvar.toFixed(0)} MVar` : 'Reaktif Referans: —';
+    return `<strong>${escapeHtml(row.name || '-')}</strong><br>${escapeHtml(row.startTm || '?')}: ${escapeHtml(formatReactiveTerminalValue(flow.qStart))}<br>${escapeHtml(row.endTm || '?')}: ${escapeHtml(formatReactiveTerminalValue(flow.qEnd))}<br><span class="tt-label">${escapeHtml(reference)}</span>`;
+  }
+
+  function appendReactiveTerminalArrow(fragment, row, flow, terminal) {
+    if (!terminal || terminal.direction === 'unknown') return;
+    const point = pointAlongHatPolyline(buildHatScreenPolyline(row), terminal.side === 'start' ? 0.14 : 0.86);
+    if (!point) return;
+    const directionSign = terminal.direction === 'forward' ? 1 : -1;
+    const angle = Math.atan2(point.dy * directionSign, point.dx * directionSign) * 180 / Math.PI;
+    const size = Math.max(4.5, Math.min(7, 3.6 + Number(state.map.zoom || 0) * 0.28));
+    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const terminalKey = `${row.id}:${terminal.side}:${terminal.measurementId || 'none'}`;
+    group.setAttribute('class', 'reactive-terminal-arrow');
+    group.setAttribute('data-terminal-arrow', terminal.side);
+    group.setAttribute('data-terminal-key', terminalKey);
+    group.setAttribute('data-flow-id', String(row.id));
+    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    arrow.setAttribute('points', `0,${-size} ${size * 1.7},0 0,${size}`);
+    arrow.setAttribute('transform', `translate(${round1(point.x)} ${round1(point.y)}) rotate(${angle.toFixed(1)})`);
+    arrow.setAttribute('fill', flow.color || (SCADA_CONFIG.NO_MATCH_COLOR || '#9ca3af'));
+    arrow.setAttribute('stroke', 'rgba(15,23,42,0.72)');
+    arrow.setAttribute('stroke-width', '0.75');
+    group.appendChild(arrow);
+    group.style.cursor = 'pointer';
+    group.style.pointerEvents = 'auto';
+    attachHoverTooltip(group, () => buildReactiveTerminalTooltip(row, flow), { owner: `hat-reactive:${terminalKey}` });
+    group.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openScadaHatDetails(row, { forceTiles: false });
+    });
+    fragment.appendChild(group);
+  }
+
+  function renderReactiveTerminalArrows(flowLayer, visibleHats) {
+    clearRenderedFlowLayer(flowLayer);
+    const fragment = document.createDocumentFragment();
+    visibleHats.forEach((row) => {
+      const flow = state.scada.lineFlowByLineId.get(row.id);
+      if (!flow) return;
+      (flow.terminalArrows || []).forEach((terminal) => appendReactiveTerminalArrow(fragment, row, flow, terminal));
+    });
+    flowLayer.appendChild(fragment);
+  }
+
   renderFlowLayer = function () {
     const flowLayer = document.getElementById('flowLayer');
     if (!flowLayer) return;
@@ -7198,6 +7607,10 @@ function _formatHistoryAxisLabel(timestampMs) {
 
     const bounds = currentGeoBounds();
     const visibleHats = getVisibleHats().filter((row) => intersects(row.bbox, bounds));
+    if (modeConfig.primaryMetric === 'reactive') {
+      renderReactiveTerminalArrows(flowLayer, visibleHats);
+      return;
+    }
     const activeIds = new Set();
     const cache = getFlowRenderNodeCache();
 
@@ -7650,11 +8063,15 @@ function _formatHistoryAxisLabel(timestampMs) {
   globalThis.syncScadaMapDisplayButtons = syncScadaMapDisplayButtons;
   globalThis.setScadaMetric = setScadaMetric;
   globalThis.queueScadaScopeFetch = queueScadaScopeFetch;
+  globalThis.getVisibleTrafoEntitiesForScadaScope = getVisibleTrafoEntitiesForScadaScope;
   globalThis.syncScadaBackgroundRefreshContext = syncBackgroundRefreshContext;
   globalThis.setScadaMapDisplayMode = setScadaMapDisplayMode;
   globalThis.setScadaTimeMode = setScadaTimeMode;
   globalThis.syncRankingKvFilterControl = syncRankingKvFilterControl;
   globalThis.applyRankingKvPreset = applyRankingKvPreset;
+  globalThis.applyReactiveReferenceSettings = applyReactiveReferenceSettings;
+  globalThis.getHatReactiveVoltageForTm = getHatReactiveVoltageForTm;
+  globalThis.getHatReactiveVoltagesForTm = getHatReactiveVoltagesForTm;
   globalThis.buildEntityMetricVisual = buildEntityMetricVisual;
   globalThis.buildScadaAuditReport = buildScadaAuditReport;
   if (globalThis.__SCADA_V2_TEST_HOOKS__) {
@@ -7703,9 +8120,14 @@ function _formatHistoryAxisLabel(timestampMs) {
       getLiveMetricTypes,
       getHistoryMetricTypes,
       getCurrentScadaScope,
+      getVisibleTrafoEntitiesForScadaScope,
+      buildHatReactiveVoltageScope,
+      queueHatReactiveVoltageFetch,
+      resolveHatReactiveTerminals,
+      applyReactiveReferenceSettings,
+      getHatReactiveReference,
       getVoltagePanelRepresentatives,
       getMetricLegendCounts,
-      computeReactiveRatioPct,
       buildPanelRows,
       setRankingEntityFilter,
       resolveHistoricalRangeBounds,

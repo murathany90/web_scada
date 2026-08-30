@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.16
+
+- Hat (MVar) panelini baskın mutlak terminal Q değeri, normalize yön uyumsuzluk uyarısı ve sıralanabilir MVAR/reaktif referans/zaman kolonlarıyla netleştirdi.
+- Terminal ok yönünü raw Superset işaretinden ayırıp çözülmüş yön değeri ve terminal tarafı üzerinden üretti; başlangıç/bitiş oklarına ayrı render/tooltip kimliği verdi.
+- Staged gerilimleri TM+gerilim seviyesi anahtarıyla deterministik seçti; sürekli TM kV kutularını kaldırıp terminal Q/U değerleri ile bağımsız zamanlarını TM hover ve hat detayına taşıdı.
+
+## 0.6.15
+
+- Hat (MVar) göstergesini iki terminaldeki Q değerinin sabit reaktif referansa oranına taşıdı; 154 kV için 120 MVar ve 400 kV için 300 MVar varsayılanları Ayarlar'dan kalıcı olarak değiştirilebilir.
+- Hat MVar oklarını başlangıç/bitiş terminaline göre bağımsızlaştırdı; tooltip ve SCADA panelinde iki terminal değerini ayrı gösterdi.
+- Hat MVar verisini önce Q ölçümleriyle çizip, TM bara gerilimlerini aynı Superset koordinatörü üzerinden ayrı ve stale-safe bir aşamada yükledi.
+- Trafo dağıtım/iletim panel seçimlerini overlay, ranking ve Superset measurement scope için tek yetkili filtreye bağladı.
+
 ## 0.6.14
 
 - Retried failed background-map measurements and safely merged unresolved partial-network IDs with the last-good V2 snapshot; unsafe partial responses are rejected without clearing live values.

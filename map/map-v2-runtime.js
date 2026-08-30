@@ -576,10 +576,11 @@
   }
 
   function buildTrafoOverlayGroups() {
-    const items = [
-      ...getVisibleTrafoDist(),
-      ...getVisibleTrafoTransmission()
-    ];
+    const allVisible = getVisibleTrafoEntities();
+    const items = globalThis.getVisibleTrafoEntitiesForScadaScope?.()
+      || (globalThis.WebSCADAReactive?.filterTrafosForScada
+        ? globalThis.WebSCADAReactive.filterTrafosForScada(allVisible, state.filters.scadaListEntity)
+        : allVisible);
     return items.reduce((list, trafo) => {
       const tm = trafo.tm || getEntityTm(trafo);
       const record = getMetricRecord('trafo', trafo.id);
@@ -596,6 +597,23 @@
     if (String(state.filters.scadaMetric || '').startsWith('trafo')) return 'trafo';
     if (String(state.filters.scadaMetric || '').startsWith('hat')) return 'hat';
     return '';
+  }
+
+  function getHatReactiveVoltageOverlay(tm) {
+    return globalThis.getHatReactiveVoltageForTm?.(tm) || null;
+  }
+
+  function getHatReactiveVoltageOverlays(tm) {
+    const values = globalThis.getHatReactiveVoltagesForTm?.(tm);
+    if (Array.isArray(values)) return values;
+    const single = getHatReactiveVoltageOverlay(tm);
+    return single ? [single] : [];
+  }
+
+  function formatReactiveVoltageTimestamp(timestamp) {
+    if (!(timestamp instanceof Date) || Number.isNaN(timestamp.getTime())) return '—';
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${pad(timestamp.getDate())}.${pad(timestamp.getMonth() + 1)}.${timestamp.getFullYear()} ${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}`;
   }
 
   function shouldShowEntityRing(entityType) {
@@ -734,14 +752,16 @@
           : '';
       lines.push(`${escapeHtml(mwDirection)} ${record.active.value >= 0 ? '+' : ''}${record.active.value.toFixed(1)} MW${mwPct ? ` - ${escapeHtml(mwPct)}` : ''}`);
     }
-    if (record?.reactive && Number.isFinite(record.reactive.value)) {
-      const reactiveDirection = getHatDirectionLabel(row, record.reactive);
-      const reactivePct = record.reactive.valueInvalid
-        ? '!'
-        : Number.isFinite(record.reactive?.loadingHintValue) && Number.isFinite(record.active?.loadingHintValue) && Math.abs(record.active.loadingHintValue) >= 1
-          ? `%${((Math.abs(record.reactive.loadingHintValue) / Math.max(Math.abs(record.active.loadingHintValue), 1)) * 100).toFixed(1)}`
-          : '';
-      lines.push(`${escapeHtml(reactiveDirection)} ${record.reactive.value >= 0 ? '+' : ''}${record.reactive.value.toFixed(1)} MVAr${reactivePct ? ` - ${escapeHtml(reactivePct)}` : ''}`);
+    if (record?.reactiveTerminals) {
+      const start = record.reactiveTerminals.start?.terminalValue;
+      const end = record.reactiveTerminals.end?.terminalValue;
+      lines.push(`${escapeHtml(row.startTm || '?')}: ${Number.isFinite(start) ? `${start >= 0 ? '+' : ''}${start.toFixed(1)} MVar` : '—'}`);
+      lines.push(`${escapeHtml(row.endTm || '?')}: ${Number.isFinite(end) ? `${end >= 0 ? '+' : ''}${end.toFixed(1)} MVar` : '—'}`);
+      if (record.displayPctMode === 'reactive-reference') {
+        lines.push(`Reaktif Referans: ${Number.isFinite(record.displayPct) ? `%${record.displayPct.toFixed(1)}` : '—'}${Number.isFinite(record.reactiveReferenceMvar) ? ` (${record.reactiveReferenceMvar.toFixed(0)} MVar)` : ''}`);
+      }
+    } else if (record?.reactive && Number.isFinite(record.reactive.value)) {
+      lines.push(`Reaktif Güç: ${record.reactive.value >= 0 ? '+' : ''}${record.reactive.value.toFixed(1)} MVar`);
     }
     if (lines.length === 1) {
       lines.push(`<span class="tt-label">${escapeHtml(`${row.startTm || '?'} >> ${row.endTm || '?'}`)}</span>`);
@@ -750,7 +770,13 @@
   }
 
   function buildTmHoverTooltip(tm) {
-    return `<strong>${escapeHtml(tm.name || '-')} (${escapeHtml(tm.kvBucket || tm.kv || '?')})</strong>`;
+    const voltageLines = getHatReactiveVoltageOverlays(tm).map((voltage) => {
+      const value = voltage?.record?.primaryValue;
+      if (!Number.isFinite(value)) return '';
+      const level = voltage?.voltageLevel ? `${voltage.voltageLevel} kV` : 'Gerilim';
+      return `<br><span class="tt-label">${escapeHtml(level)}: ${value.toFixed(1)} kV<br>Gerilim ölçüm zamanı: ${escapeHtml(formatReactiveVoltageTimestamp(voltage?.record?.primaryTimestamp))}</span>`;
+    }).filter(Boolean).join('');
+    return `<strong>${escapeHtml(tm.name || '-')} (${escapeHtml(tm.kvBucket || tm.kv || '?')})</strong>${voltageLines}`;
   }
 
   function buildTrafoHoverTooltip(entry) {
@@ -781,7 +807,8 @@
 
   renderTmLayer = function () {
     el.tmLayer.innerHTML = '';
-    if (!state.filters.showTm && !isSelectionForceVisible('tm')) return;
+    const isHatReactiveOverlay = state.scada?.enabled && state.filters.scadaMetric === 'hat-reactive';
+    if (!state.filters.showTm && !isSelectionForceVisible('tm') && !isHatReactiveOverlay) return;
     const bounds = currentGeoBounds();
     const fragment = document.createDocumentFragment();
     const visibleTms = getVisibleTms().slice();

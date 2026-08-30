@@ -1,6 +1,10 @@
 param([string]$Root = (Split-Path -Parent $PSScriptRoot))
 $ErrorActionPreference = 'Stop'
 $rootPath = (Resolve-Path -LiteralPath $Root).Path
+$manifestPath = Join-Path $rootPath 'manifest.json'
+try { $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json } catch { throw 'manifest.json gecersiz JSON; paket olusturulmadi.' }
+$version = [string]$manifest.version
+if ([string]::IsNullOrWhiteSpace($version) -or $version -notmatch '^\d+\.\d+\.\d+$') { throw 'manifest.json gecersiz eklenti surumu iceriyor; paket olusturulmadi.' }
 $authPath = Join-Path $rootPath 'data\scada_auth.json'
 if (!(Test-Path -LiteralPath $authPath)) { throw 'data/scada_auth.json bulunamadi; paket olusturulmedi.' }
 try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json } catch { throw 'data/scada_auth.json gecersiz JSON; paket olusturulmedi.' }
@@ -8,9 +12,8 @@ if (-not [bool]$auth.enabled -or [string]::IsNullOrWhiteSpace([string]$auth.base
 & (Join-Path $rootPath 'scripts\generate-icons.ps1') -Root $rootPath
 $dist = Join-Path $rootPath 'dist'; $unpacked = Join-Path $dist 'chrome-extension'
 if (Test-Path -LiteralPath $unpacked) { Remove-Item -LiteralPath $unpacked -Recurse -Force }
-Get-ChildItem -LiteralPath $dist -Filter 'WebSCADA_*.zip' -File -ErrorAction SilentlyContinue | Remove-Item -Force
 New-Item -ItemType Directory -Force -Path $unpacked | Out-Null
-$files = @('manifest.json','app.html','app.css','app.js','alarm-view.js','settings-view.js')
+$files = @('manifest.json','app.html','app.css','app.js','alarm-view.js','settings-view.js','settings-reactive-reference.js')
 foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $rootPath $file) -Destination (Join-Path $unpacked $file) }
 foreach ($dir in @('background','core','icons','lib','map','offscreen')) { Copy-Item -LiteralPath (Join-Path $rootPath $dir) -Destination (Join-Path $unpacked $dir) -Recurse }
 function Assert-PcmWav([string]$Path) {
@@ -37,7 +40,7 @@ function Assert-PackagedHtmlAssets([string]$HtmlPath) {
   }
 }
 Get-ChildItem -LiteralPath $unpacked -Filter '*.html' -Recurse -File | ForEach-Object { Assert-PackagedHtmlAssets $_.FullName }
-$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'; $zip = Join-Path $dist "WebSCADA_0.6.14_$stamp.zip"
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'; $zip = Join-Path $dist "WebSCADA_${version}_$stamp.zip"
 Push-Location $unpacked
 try { Compress-Archive -Path .\* -DestinationPath $zip -CompressionLevel Optimal } finally { Pop-Location }
 $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)

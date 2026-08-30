@@ -1477,6 +1477,23 @@ html[data-theme="dark"] .bara-set-label-box {
   border: 1px solid rgba(15, 23, 42, 0.16);
 }
 
+.ranking-terminal-warning {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #1f2937;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  vertical-align: 1px;
+  cursor: help;
+}
+
 .uncertainty-dot,
 .status-dot {
   display: inline-flex;

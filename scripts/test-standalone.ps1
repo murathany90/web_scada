@@ -4,7 +4,7 @@ $rootPath = (Resolve-Path -LiteralPath $Root).Path
 $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("WebSCADA-standalone-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $temp | Out-Null
 try {
-  Get-ChildItem -LiteralPath $rootPath -Force | Where-Object { $_.Name -notin @('dist', 'build', 'node_modules') } | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $temp $_.Name) -Recurse -Force }
+  Get-ChildItem -LiteralPath $rootPath -Force | Where-Object { $_.Name -notin @('.git', 'dist', 'build', 'node_modules') } | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $temp $_.Name) -Recurse -Force }
   Push-Location $temp
   & npm.cmd test; if ($LASTEXITCODE -ne 0) { throw 'Standalone test basarisiz.' }
   & npm.cmd run build; if ($LASTEXITCODE -ne 0) { throw 'Standalone build basarisiz.' }

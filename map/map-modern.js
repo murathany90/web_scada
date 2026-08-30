@@ -1353,16 +1353,16 @@ function buildHatHoverTooltipHtml(row) {
         : '';
     lines.push(buildHatHoverMetricLine(row, record.active, 'MW', mwPct));
   }
-  if (record?.reactive && Number.isFinite(record.reactive.value)) {
-    const reactiveRatio = Number.isFinite(record.active?.loadingHintValue) && Math.abs(record.active.loadingHintValue) >= 1
-      ? (Math.abs(record.reactive.loadingHintValue || 0) / Math.max(Math.abs(record.active.loadingHintValue), 1)) * 100
-      : null;
-    const mvarPct = record.reactive.valueInvalid
-      ? '!'
-      : Number.isFinite(reactiveRatio)
-        ? `%${reactiveRatio.toFixed(1)}`
-        : '';
-    lines.push(buildHatHoverMetricLine(row, record.reactive, 'MVAr', mvarPct));
+  if (record?.reactiveTerminals) {
+    const start = record.reactiveTerminals.start?.terminalValue;
+    const end = record.reactiveTerminals.end?.terminalValue;
+    lines.push(`${escapeHtml(row.startTm || '?')}: ${Number.isFinite(start) ? `${start >= 0 ? '+' : ''}${start.toFixed(1)} MVar` : '—'}`);
+    lines.push(`${escapeHtml(row.endTm || '?')}: ${Number.isFinite(end) ? `${end >= 0 ? '+' : ''}${end.toFixed(1)} MVar` : '—'}`);
+    if (record.displayPctMode === 'reactive-reference') {
+      lines.push(`Reaktif Referans: ${Number.isFinite(record.displayPct) ? `%${record.displayPct.toFixed(1)}` : '—'}${Number.isFinite(record.reactiveReferenceMvar) ? ` (${record.reactiveReferenceMvar.toFixed(0)} MVar)` : ''}`);
+    }
+  } else if (record?.reactive && Number.isFinite(record.reactive.value)) {
+    lines.push(buildHatHoverMetricLine(row, record.reactive, 'MVar', ''));
   }
   if (lines.length === 1) {
     lines.push(`<span class="tt-label">${escapeHtml(`${row.startTm || '?'} >> ${row.endTm || '?'}`)}</span>`);
@@ -1413,7 +1413,7 @@ function getHatStrokeStyle(row) {
     return { color: noDataColor, width: row.kv === '400' ? 2.2 : 1.5, opacity: 0.92, flow, record };
   }
 
-  const color = flow.displayPctMode === 'reactive-ratio'
+  const color = flow.displayPctMode === 'reactive-reference'
     ? (flow.color || noDataColor)
     : getFlowColor(flow.displayPct);
   let width = Math.max(flow.width, row.kv === '400' ? 2.8 : 2);

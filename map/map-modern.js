@@ -1328,6 +1328,57 @@ function formatHatHoverLength(lengthKm) {
   });
 }
 
+function formatHatCharacteristicForTooltip(characteristic) {
+  const normalized = String(characteristic || '').replace(/\s*\r?\n\s*/g, ' | ').replace(/\s+/g, ' ').trim();
+  return normalized || '—';
+}
+
+function formatHatModelLengthKm(lengthKm) {
+  const numeric = Number(lengthKm);
+  return Number.isFinite(numeric)
+    ? numeric.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+    : '—';
+}
+
+function getHatCableBadgeTitle(hat) {
+  const cableRatio = Number(hat?.cableRatio);
+  return Number.isFinite(cableRatio)
+    ? `Kablo ağırlıklı hat – kablo oranı %${(cableRatio * 100).toFixed(1)}`
+    : 'Kablo ağırlıklı hat';
+}
+
+function getHatCableBadgeHtml(hat) {
+  if (hat?.cableDominant !== true) return '';
+  const title = escapeHtml(getHatCableBadgeTitle(hat));
+  return ` <span class="hat-cable-badge" title="${title}" aria-label="${title}">(K)</span>`;
+}
+
+function getHatDisplayNameText(hat) {
+  return `${hat?.name || '-'}${hat?.cableDominant === true ? ' (K)' : ''}`;
+}
+
+function getHatDisplayNameHtml(hat) {
+  return `${escapeHtml(hat?.name || '-')}${getHatCableBadgeHtml(hat)}`;
+}
+
+function buildHatModelTooltipHtml(hat) {
+  const lines = [
+    `Karakteristik: ${escapeHtml(formatHatCharacteristicForTooltip(hat?.characteristic))}`,
+    `Uzunluk: ${escapeHtml(formatHatModelLengthKm(hat?.lengthKm))} km`
+  ];
+  const cableLengthKm = Number(hat?.cableLengthKm);
+  const cableRatio = Number(hat?.cableRatio);
+  if (Number.isFinite(cableLengthKm) && Number.isFinite(cableRatio)) {
+    lines.push(`Kablo: %${(cableRatio * 100).toFixed(1)} / ${escapeHtml(formatHatModelLengthKm(cableLengthKm))} km`);
+  }
+  return lines.join('<br>');
+}
+
+globalThis.getHatDisplayNameText = getHatDisplayNameText;
+globalThis.getHatDisplayNameHtml = getHatDisplayNameHtml;
+globalThis.getHatCableBadgeHtml = getHatCableBadgeHtml;
+globalThis.buildHatModelTooltipHtml = buildHatModelTooltipHtml;
+
 function buildHatHoverDirection(startTm, endTm, directionValue) {
   if (!Number.isFinite(directionValue)) return `${startTm || '?'} >> ${endTm || '?'}`;
   if (directionValue >= 0) return `${startTm || '?'} >> ${endTm || '?'}`;
@@ -1345,7 +1396,7 @@ function buildHatHoverTooltipHtml(row) {
   if (reactiveTooltip) return reactiveTooltip;
   const record = state.scada?.entityMetricsByKey?.get(`hat:${row.id}`) || null;
   const lines = [
-    `<strong>${escapeHtml(row.name || '-')} (${escapeHtml(formatHatHoverLength(row.lengthKm))} km)</strong>`
+    `<strong>${getHatDisplayNameHtml(row)} (${escapeHtml(formatHatHoverLength(row.lengthKm))} km)</strong>`
   ];
   if (record?.active && Number.isFinite(record.active.value)) {
     const mwPct = record.active.valueInvalid
@@ -1381,6 +1432,7 @@ function buildHatHoverTooltipHtml(row) {
     const modelLabel = record.directionResolvedBy || record.directionModel || '-';
     lines.push(`<span class="tt-label">Model: ${escapeHtml(modelLabel)} · Terminal: ${escapeHtml(terminalLabel)} · Guven: ${escapeHtml(resolutionLabel)}</span>`);
   }
+  lines.push(buildHatModelTooltipHtml(row));
   return lines.join('<br>');
 }
 
@@ -1494,6 +1546,16 @@ function renderHatLayer() {
     if (isSelected('hat', row.id)) strokeWidth += 0.9;
     path.setAttribute('stroke-width', String(strokeWidth));
     path.setAttribute('class', `hat-line${isSelected('hat', row.id) ? ' feature-selected-hat' : ''}`);
+    if (row.cableDominant === true && ['hat-active', 'hat-reactive'].includes(state.filters.scadaMetric)) {
+      const cableGlow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      cableGlow.setAttribute('d', d);
+      cableGlow.setAttribute('fill', 'none');
+      cableGlow.setAttribute('stroke', '#facc15');
+      cableGlow.setAttribute('stroke-width', String(strokeWidth + 3.5));
+      cableGlow.setAttribute('class', 'hat-cable-glow');
+      cableGlow.setAttribute('pointer-events', 'none');
+      fragment.appendChild(cableGlow);
+    }
     const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     hitPath.setAttribute('d', d);
     hitPath.setAttribute('fill', 'none');
@@ -1540,7 +1602,7 @@ function renderHatLayer() {
       requestRender();
     });
     /* Tooltip with MW + time when SCADA is active */
-    const safeName = escapeHtml(row.name || '-');
+    const safeName = getHatDisplayNameHtml(row);
     const safeStartTm = escapeHtml(row.startTm || '?');
     const safeEndTm = escapeHtml(row.endTm || '?');
     const safeKv = escapeHtml(row.kv || '?');
@@ -1569,6 +1631,7 @@ function renderHatLayer() {
       tooltipHtml += `<br><span style="color:${record.displayColor || strokeColor};font-weight:700">${primaryText} · ${pctText}</span>${tsT ? ` · <span class="tt-label">${escapeHtml(tsT)}</span>` : ''}`;
       if (record.uncertaintyTooltip) tooltipHtml += `<br><span class="tt-label">${escapeHtml(record.uncertaintyTooltip)}</span>`;
     }
+    tooltipHtml += `<br>${buildHatModelTooltipHtml(row)}`;
     attachHoverTooltip(path, () => globalThis.buildHatReactiveTooltipHtml?.(row) || tooltipHtml, { owner: `hat:${row.id}` });
     attachHoverTooltip(hitPath, () => buildHatHoverTooltipHtml(row), { owner: `hat:${row.id}` });
     fragment.appendChild(path);
@@ -1898,6 +1961,7 @@ function renderInfoFields(fields) {
 
 function showInfo({
   title,
+  titleHtml = '',
   subtitle = '',
   tags = [],
   fields = [],
@@ -1956,7 +2020,7 @@ function showInfo({
     <div class="info-head">
       <div>
         <p class="info-kicker">${escapeHtml(subtitle || 'TPYS detay')}</p>
-        <h3>${escapeHtml(title || '-')}</h3>
+        <h3>${titleHtml || escapeHtml(title || '-')}</h3>
       </div>
       <button id="btnInfoClose" class="info-close" title="Kapat">×</button>
     </div>

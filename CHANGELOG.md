@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.18
+
+- Hat karakteristiklerindeki açık uzunluk segmentlerinden kablo oranını model indeksleme aşamasında hesapladı; kablo ağırlıklı hatları panel, hover ve detay başlıklarında (K) ile belirginleştirdi.
+- Hat MW/MVar tooltip'lerine ham karakteristik, toplam uzunluk ve güvenilir kablo uzunluğu/oranını ekledi; ana SCADA rengini değiştirmeden kablo ağırlıklı hatlar için hafif sarı alt glow ekledi.
+
 ## 0.6.17
 
 - Hat (MVar) hover ve terminal-ok tooltip'lerini Q/U terminal verileri ile bağımsız zaman damgalarına bağladı; staged U yokken veri alanları boş değerle görünür kalır.

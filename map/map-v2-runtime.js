@@ -99,6 +99,10 @@
 
     network.hatLines.forEach((hat) => {
       hat.kvBucket = normalizeKvBucket(hat.kv);
+      const cableModel = globalThis.WebSCADAHatCable?.classify?.(hat) || { cableLengthKm: null, cableRatio: null, cableDominant: false };
+      hat.cableLengthKm = cableModel.cableLengthKm;
+      hat.cableRatio = cableModel.cableRatio;
+      hat.cableDominant = cableModel.cableDominant;
       hat.startTmRef = network.tmById.get(String(hat.startTmId || '')) || network.tmByName.get(String(hat.startTm || '')) || null;
       hat.endTmRef = network.tmById.get(String(hat.endTmId || '')) || network.tmByName.get(String(hat.endTm || '')) || null;
       network.hatById.set(String(hat.id), hat);

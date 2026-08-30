@@ -2302,7 +2302,10 @@
   function buildHatReactiveTooltipHtml(hat) {
     const record = state.scada.entityMetricsByKey.get(`hat:${hat?.id}`) || null;
     if (record?.displayPctMode !== 'reactive-reference') return '';
-    const lines = [`<strong>${escapeHtml(hat.name || '-')}</strong>`];
+    const title = typeof globalThis.getHatDisplayNameHtml === 'function'
+      ? globalThis.getHatDisplayNameHtml(hat)
+      : escapeHtml(hat.name || '-');
+    const lines = [`<strong>${title}</strong>`];
     ['start', 'end'].forEach((side) => {
       const terminal = getHatReactiveTerminalPresentation(hat, side);
       lines.push(
@@ -2316,6 +2319,7 @@
     const referencePct = Number.isFinite(record.displayPct) ? `%${record.displayPct.toFixed(1)}` : '—';
     const referenceMvar = Number.isFinite(record.reactiveReferenceMvar) ? `${record.reactiveReferenceMvar.toFixed(0)} MVar` : '—';
     lines.push(`Reaktif Referans: ${referencePct} (${referenceMvar})`);
+    if (typeof globalThis.buildHatModelTooltipHtml === 'function') lines.push(globalThis.buildHatModelTooltipHtml(hat));
     return lines.join('<br>');
   }
 
@@ -4094,7 +4098,8 @@ try {
       ['Veri Yasi', record?.ageLabel || '-']
     ];
     return {
-      title: hat.name,
+      title: typeof globalThis.getHatDisplayNameText === 'function' ? globalThis.getHatDisplayNameText(hat) : hat.name,
+      titleHtml: typeof globalThis.getHatDisplayNameHtml === 'function' ? globalThis.getHatDisplayNameHtml(hat) : escapeHtml(hat.name || '-'),
       subtitle: hat.kv ? `${hat.kv} kV Hat` : 'Hat',
       tags: [(hat.ytmNames || []).join(' / ') || '-'],
       compactFields,
@@ -4122,6 +4127,7 @@ try {
 
     showInfo({
       title: model.title,
+      titleHtml: model.titleHtml,
       subtitle: model.subtitle,
       tags: model.tags,
       compactFields: model.compactFields,
@@ -6155,6 +6161,8 @@ function _formatHistoryAxisLabel(timestampMs) {
           entityKey: `hat:${hat.id}`,
           entityType: 'hat',
           name: hat.name,
+          cableDominant: Boolean(hat.cableDominant),
+          cableRatio: hat.cableRatio,
           km: hat.lengthKm || 0,
           tmName: `${hat.startTm || '-'} -> ${hat.endTm || '-'}`,
           timestamp: record?.dominantReactiveTimestamp || record?.primaryTimestamp || null,
@@ -6440,10 +6448,13 @@ function _formatHistoryAxisLabel(timestampMs) {
           : Number.isFinite(row.mvar)
             ? `<div class="ranking-mvar-cell"><span>${formatRoundedReactiveMvar(row.mvar)}</span>${row.terminalDirectionMismatch ? `<span class="ranking-terminal-warning" title="${mvarWarningTooltip}" aria-label="${mvarWarningTooltip}">!</span>` : ''}</div>`
             : '-';
+        const hatNameText = typeof globalThis.getHatDisplayNameText === 'function'
+          ? globalThis.getHatDisplayNameText(row)
+          : row.name || '-';
         return `
           <tr class="${activeClass}${timeClass}" data-entity-key="${row.entityKey}">
             <td class="col-idx">${rowNo}</td>
-            <td class="col-name" title="${escapeHtml(row.name)}"><span class="ranking-name-cell">${statusDot}<span class="ranking-name-text">${escapeHtml(row.name || '-')}</span></span></td>
+            <td class="col-name" title="${escapeHtml(hatNameText)}"><span class="ranking-name-cell">${statusDot}<span class="ranking-name-value"><span class="ranking-name-text">${escapeHtml(row.name || '-')}</span>${row.cableDominant ? (typeof globalThis.getHatCableBadgeHtml === 'function' ? globalThis.getHatCableBadgeHtml(row) : ' (K)') : ''}</span></span></td>
             <td class="col-km">${Number.isFinite(row.km) ? row.km.toFixed(0) : '&mdash;'}</td>
             <td class="col-ts">${renderPanelTimeCell(row)}</td>
             <td class="col-mw">${row.mwInvalid ? '!' : Number.isFinite(row.mw) ? `${row.mw >= 0 ? '+' : ''}${row.mw.toFixed(1)}` : '&mdash;'}</td>

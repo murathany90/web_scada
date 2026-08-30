@@ -623,6 +623,16 @@ button.tiny {
   pointer-events: stroke;
 }
 
+.hat-cable-glow {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.24;
+  pointer-events: none;
+  filter: drop-shadow(0 0 1.8px rgba(250, 204, 21, 0.56));
+}
+
 .measure-line {
   stroke: #0ea5e9;
   stroke-width: 1.7;
@@ -1422,12 +1432,21 @@ html[data-theme="dark"] .bara-set-label-box {
   align-items: start;
   min-width: 0;
 }
+
+.ranking-name-value {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+}
+
 .ranking-name-text {
   display: -webkit-box;
   overflow: hidden;
   text-overflow: ellipsis;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  min-width: 0;
+  flex: 1 1 auto;
   line-height: 1.3;
 }
 .ranking-table .col-km { width: 18px; text-align: right; }
@@ -2069,6 +2088,17 @@ button.scada-quality-chip {
   width: 44px;
   text-align: right;
   color: #ef4444;
+}
+
+.hat-cable-badge {
+  display: inline-block;
+  margin-left: 3px;
+  color: #facc15;
+  font-size: 0.82em;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: help;
 }
 
 .ranking-table td.col-mvar {

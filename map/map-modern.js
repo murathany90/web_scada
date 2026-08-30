@@ -1341,6 +1341,8 @@ function buildHatHoverMetricLine(row, metricRecord, unit, pctText) {
 }
 
 function buildHatHoverTooltipHtml(row) {
+  const reactiveTooltip = globalThis.buildHatReactiveTooltipHtml?.(row);
+  if (reactiveTooltip) return reactiveTooltip;
   const record = state.scada?.entityMetricsByKey?.get(`hat:${row.id}`) || null;
   const lines = [
     `<strong>${escapeHtml(row.name || '-')} (${escapeHtml(formatHatHoverLength(row.lengthKm))} km)</strong>`
@@ -1567,7 +1569,7 @@ function renderHatLayer() {
       tooltipHtml += `<br><span style="color:${record.displayColor || strokeColor};font-weight:700">${primaryText} · ${pctText}</span>${tsT ? ` · <span class="tt-label">${escapeHtml(tsT)}</span>` : ''}`;
       if (record.uncertaintyTooltip) tooltipHtml += `<br><span class="tt-label">${escapeHtml(record.uncertaintyTooltip)}</span>`;
     }
-    attachHoverTooltip(path, tooltipHtml);
+    attachHoverTooltip(path, () => globalThis.buildHatReactiveTooltipHtml?.(row) || tooltipHtml, { owner: `hat:${row.id}` });
     attachHoverTooltip(hitPath, () => buildHatHoverTooltipHtml(row), { owner: `hat:${row.id}` });
     fragment.appendChild(path);
     fragment.appendChild(hitPath);

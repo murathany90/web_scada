@@ -739,6 +739,8 @@
   }
 
   function buildHatHoverTooltip(row) {
+    const reactiveTooltip = globalThis.buildHatReactiveTooltipHtml?.(row);
+    if (reactiveTooltip) return reactiveTooltip;
     const record = getMetricRecord('hat', row.id);
     const lines = [
       `<strong>${escapeHtml(row.name || '-')} (${escapeHtml(formatHatLengthKm(row.lengthKm))} km)</strong>`

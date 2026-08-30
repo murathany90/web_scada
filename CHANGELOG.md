@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.17
+
+- Hat (MVar) hover ve terminal-ok tooltip'lerini Q/U terminal verileri ile bağımsız zaman damgalarına bağladı; staged U yokken veri alanları boş değerle görünür kalır.
+- Hat panelinde dominant terminal MVar değerini yalnız sunumda tam sayıya yuvarladı, yön uyumsuzluk uyarısını ikinci satıra taşıdı ve km başlığını gerçek uzunluk sıralamasına bağladı.
+
 ## 0.6.16
 
 - Hat (MVar) panelini baskın mutlak terminal Q değeri, normalize yön uyumsuzluk uyarısı ve sıralanabilir MVAR/reaktif referans/zaman kolonlarıyla netleştirdi.

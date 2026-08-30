@@ -35,6 +35,8 @@ test('fixed reactive references use 120 MVar at 154 kV and 300 MVar at 400 kV an
   const saved = settings.normalize({ reactiveReference154Mvar: 135, reactiveReference400Mvar: 360 });
   assert.equal(saved.reactiveReference154Mvar, 135);
   assert.equal(saved.reactiveReference400Mvar, 360);
+  const userOverride = settings.normalize({ reactiveReference154Mvar: 40 });
+  assert.equal(reactive.referenceForKv(154, reactive.normalizeReferences(userOverride)), 40);
   assert.match(source('settings-reactive-reference.js'), /WEBSCADA_SETTINGS_SAVE/);
   const runtime = source('map/scada-v2-runtime.js');
   assert.match(runtime, /REACTIVE\.reactiveReferenceRatioPct/);
@@ -59,6 +61,15 @@ test('line reactive terminals retain their own normalized direction and independ
   assert.match(runtime, /qEnd:/);
   assert.match(runtime, /data-terminal-arrow/);
   assert.match(runtime, /data-terminal-key/);
+  assert.match(runtime, /function buildHatReactiveTooltipHtml/);
+  assert.match(runtime, /Q zamanı:/);
+  assert.match(runtime, /U zamanı:/);
+  assert.match(runtime, /buildReactiveTerminalTooltip\(row, flow, terminal\)/);
+  assert.match(runtime, /formatRoundedReactiveMvar/);
+  assert.match(runtime, /ranking-mvar-cell/);
+  assert.match(runtime, /case 'km':/);
+  assert.match(runtime, /data-sort="km"/);
+  assert.match(source('map/map-modern.js'), /globalThis\.buildHatReactiveTooltipHtml\?\.\(row\)/);
 });
 
 test('Hat MVar renders Q first and queues a separate U/kV request without MW scope', () => {

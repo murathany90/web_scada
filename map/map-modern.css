@@ -1483,14 +1483,13 @@ html[data-theme="dark"] .bara-set-label-box {
   justify-content: center;
   width: 12px;
   height: 12px;
-  margin-left: 3px;
+  margin-top: 2px;
   border-radius: 50%;
   background: #f59e0b;
   color: #1f2937;
   font-size: 10px;
   font-weight: 800;
   line-height: 1;
-  vertical-align: 1px;
   cursor: help;
 }
 
@@ -2067,9 +2066,28 @@ button.scada-quality-chip {
 }
 
 .ranking-table .col-mvar {
-  width: 28px;
+  width: 44px;
   text-align: right;
   color: #ef4444;
+}
+
+.ranking-table td.col-mvar {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.ranking-mvar-cell {
+  display: inline-flex;
+  min-height: 29px;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  line-height: 1.1;
+}
+
+.ranking-mvar-cell .ranking-terminal-warning {
+  align-self: center;
 }
 
 .ranking-table .col-tm {

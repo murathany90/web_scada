@@ -2261,6 +2261,71 @@
     return level ? matches.find((candidate) => candidate.voltageLevel === level) || null : matches[0];
   }
 
+  function formatReactiveMeasurementTimestamp(timestamp) {
+    if (!(timestamp instanceof Date) || Number.isNaN(timestamp.getTime())) return '—';
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${pad(timestamp.getDate())}.${pad(timestamp.getMonth() + 1)}.${timestamp.getFullYear()} ${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}:${pad(timestamp.getSeconds())}`;
+  }
+
+  function formatReactiveVoltageValue(value) {
+    return Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)} kV` : '—';
+  }
+
+  function formatReactiveDirection(direction) {
+    return direction === 'forward' ? 'İleri' : direction === 'reverse' ? 'Geri' : '—';
+  }
+
+  function getHatReactiveTerminalPresentation(hat, side) {
+    const record = state.scada.entityMetricsByKey.get(`hat:${hat?.id}`) || null;
+    const terminal = record?.reactiveTerminals?.[side] || null;
+    const [tmRef, tmName] = side === 'start'
+      ? [hat?.startTmRef, hat?.startTm]
+      : [hat?.endTmRef, hat?.endTm];
+    const voltage = getHatReactiveVoltageForTm(tmRef, tmName, hat?.kvBucket || hat?.kv);
+    const qValue = !terminal?.valueInvalid && Number.isFinite(terminal?.terminalValue)
+      ? Number(terminal.terminalValue)
+      : null;
+    const uValue = Number.isFinite(voltage?.record?.primaryValue)
+      ? Number(voltage.record.primaryValue)
+      : null;
+    return {
+      side,
+      name: tmName || (side === 'start' ? 'Başlangıç' : 'Bitiş'),
+      qValue,
+      qTimestamp: terminal?.timestamp || null,
+      direction: terminal?.arrowDirection || 'unknown',
+      uValue,
+      uTimestamp: voltage?.record?.primaryTimestamp || null
+    };
+  }
+
+  function buildHatReactiveTooltipHtml(hat) {
+    const record = state.scada.entityMetricsByKey.get(`hat:${hat?.id}`) || null;
+    if (record?.displayPctMode !== 'reactive-reference') return '';
+    const lines = [`<strong>${escapeHtml(hat.name || '-')}</strong>`];
+    ['start', 'end'].forEach((side) => {
+      const terminal = getHatReactiveTerminalPresentation(hat, side);
+      lines.push(
+        `<strong>${escapeHtml(terminal.name)}</strong>`,
+        `Q: ${escapeHtml(formatReactiveTerminalValue(terminal.qValue))}`,
+        `Q zamanı: ${escapeHtml(formatReactiveMeasurementTimestamp(terminal.qTimestamp))}`,
+        `U: ${escapeHtml(formatReactiveVoltageValue(terminal.uValue))}`,
+        `U zamanı: ${escapeHtml(formatReactiveMeasurementTimestamp(terminal.uTimestamp))}`
+      );
+    });
+    const referencePct = Number.isFinite(record.displayPct) ? `%${record.displayPct.toFixed(1)}` : '—';
+    const referenceMvar = Number.isFinite(record.reactiveReferenceMvar) ? `${record.reactiveReferenceMvar.toFixed(0)} MVar` : '—';
+    lines.push(`Reaktif Referans: ${referencePct} (${referenceMvar})`);
+    return lines.join('<br>');
+  }
+
+  function buildHatReactiveDirectionMismatchTooltip(hat) {
+    const start = getHatReactiveTerminalPresentation(hat, 'start');
+    const end = getHatReactiveTerminalPresentation(hat, 'end');
+    const describe = (label, terminal) => `${label}: Q ${formatReactiveTerminalValue(terminal.qValue)} · ${formatReactiveDirection(terminal.direction)} · ${formatReactiveMeasurementTimestamp(terminal.qTimestamp)}`;
+    return `Terminal MVar yönleri uyumsuz\n${describe('Başlangıç', start)}\n${describe('Bitiş', end)}`;
+  }
+
   async function queueHatReactiveVoltageFetch(hatScope, requestContext, options = {}) {
     const voltageScope = buildHatReactiveVoltageScope(hatScope);
     state.scada.hatReactiveVoltage = {
@@ -3992,31 +4057,18 @@ try {
       ['Olcum Zamani', record?.primaryTimestamp ? record.primaryTimestamp.toLocaleTimeString('tr-TR') : '-']
     ];
     if (record?.displayPctMode === 'reactive-reference') {
-      const formatMeasurementTime = (timestamp) => {
-        if (!(timestamp instanceof Date) || Number.isNaN(timestamp.getTime())) return '—';
-        const pad = (value) => String(value).padStart(2, '0');
-        return `${pad(timestamp.getDate())}.${pad(timestamp.getMonth() + 1)}.${timestamp.getFullYear()} ${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}`;
-      };
-      const terminalFields = (side, tmRef, tmName) => {
-        const terminal = record?.reactiveTerminals?.[side] || null;
-        const qValue = !terminal?.valueInvalid && Number.isFinite(terminal?.terminalValue)
-          ? `${terminal.terminalValue >= 0 ? '+' : ''}${terminal.terminalValue.toFixed(1)} MVar`
-          : '—';
-        const voltage = getHatReactiveVoltageForTm(tmRef, tmName, hat.kvBucket || hat.kv);
-        const uValue = Number.isFinite(voltage?.record?.primaryValue)
-          ? `${voltage.record.primaryValue.toFixed(1)} kV`
-          : '—';
-        const label = tmName || (side === 'start' ? 'Başlangıç' : 'Bitiş');
+      const terminalFields = (side) => {
+        const terminal = getHatReactiveTerminalPresentation(hat, side);
         return [
-          [`${label} Q`, qValue],
-          [`${label} Q zamanı`, formatMeasurementTime(terminal?.timestamp)],
-          [`${label} U`, uValue],
-          [`${label} U zamanı`, formatMeasurementTime(voltage?.record?.primaryTimestamp)]
+          [`${terminal.name} Q`, formatReactiveTerminalValue(terminal.qValue)],
+          [`${terminal.name} Q zamanı`, formatReactiveMeasurementTimestamp(terminal.qTimestamp)],
+          [`${terminal.name} U`, formatReactiveVoltageValue(terminal.uValue)],
+          [`${terminal.name} U zamanı`, formatReactiveMeasurementTimestamp(terminal.uTimestamp)]
         ];
       };
       compactFields.splice(2, compactFields.length - 2,
-        ...terminalFields('start', hat.startTmRef, hat.startTm),
-        ...terminalFields('end', hat.endTmRef, hat.endTm),
+        ...terminalFields('start'),
+        ...terminalFields('end'),
         ['Reaktif Referans', `${pctValue} (${Number.isFinite(record.reactiveReferenceMvar) ? record.reactiveReferenceMvar.toFixed(0) : '—'} MVar)`],
         ['Akış Yönü', directionText]
       );
@@ -6176,6 +6228,10 @@ function _formatHistoryAxisLabel(timestampMs) {
           leftValue = Number(left.timestamp?.getTime?.() || 0);
           rightValue = Number(right.timestamp?.getTime?.() || 0);
           break;
+        case 'km':
+          leftValue = Number(left.km || 0);
+          rightValue = Number(right.km || 0);
+          break;
         case 'mvar':
           leftValue = Math.max(Math.abs(Number(left.mvarStart ?? left.mvar ?? 0)), Math.abs(Number(left.mvarEnd ?? left.mvar ?? 0)));
           rightValue = Math.max(Math.abs(Number(right.mvarStart ?? right.mvar ?? 0)), Math.abs(Number(right.mvarEnd ?? right.mvar ?? 0)));
@@ -6241,7 +6297,7 @@ function _formatHistoryAxisLabel(timestampMs) {
         <thead><tr>
           <th class="col-idx">#</th>
           <th class="col-name" data-sort="name">Hat Adi</th>
-          <th class="col-km" data-sort="score">km</th>
+          <th class="col-km" data-sort="km">km</th>
           <th class="col-ts" data-sort="timestamp">Zaman</th>
           <th class="col-mw" data-sort="mw">MW</th>
           <th class="col-mvar" data-sort="mvar">MVAR</th>
@@ -6282,6 +6338,13 @@ function _formatHistoryAxisLabel(timestampMs) {
     if (!(timestamp instanceof Date) || Number.isNaN(timestamp.getTime())) return '';
     const pad = (value) => String(value).padStart(2, '0');
     return `${pad(timestamp.getDate())}.${pad(timestamp.getMonth() + 1)}.${String(timestamp.getFullYear()).slice(-2)} ${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}`;
+  }
+
+  function formatRoundedReactiveMvar(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '—';
+    const rounded = Math.round(Math.abs(numeric));
+    return `${numeric >= 0 ? '+' : '-'}${rounded}`;
   }
 
   function getPanelTimeToneClass(row) {
@@ -6369,6 +6432,14 @@ function _formatHistoryAxisLabel(timestampMs) {
         const pctTextColor = getReadableTextColor(pctColor);
         const statusDot = `<span class="status-dot ${escapeHtml(row.statusDotTone || 'is-missing')}" title="${escapeHtml(row.statusDotTooltip || 'Durum bilgisi yok')}" aria-label="${escapeHtml(row.statusDotTooltip || 'Durum bilgisi yok')}">&#9679;</span>`;
         const pctText = row.invalidPct ? '!' : Number.isFinite(row.pct) ? row.pct.toFixed(1) : '&mdash;';
+        const mvarWarningTooltip = row.terminalDirectionMismatch
+          ? escapeHtml(buildHatReactiveDirectionMismatchTooltip(row))
+          : '';
+        const mvarCell = row.mvarInvalid
+          ? '!'
+          : Number.isFinite(row.mvar)
+            ? `<div class="ranking-mvar-cell"><span>${formatRoundedReactiveMvar(row.mvar)}</span>${row.terminalDirectionMismatch ? `<span class="ranking-terminal-warning" title="${mvarWarningTooltip}" aria-label="${mvarWarningTooltip}">!</span>` : ''}</div>`
+            : '-';
         return `
           <tr class="${activeClass}${timeClass}" data-entity-key="${row.entityKey}">
             <td class="col-idx">${rowNo}</td>
@@ -6376,7 +6447,7 @@ function _formatHistoryAxisLabel(timestampMs) {
             <td class="col-km">${Number.isFinite(row.km) ? row.km.toFixed(0) : '&mdash;'}</td>
             <td class="col-ts">${renderPanelTimeCell(row)}</td>
             <td class="col-mw">${row.mwInvalid ? '!' : Number.isFinite(row.mw) ? `${row.mw >= 0 ? '+' : ''}${row.mw.toFixed(1)}` : '&mdash;'}</td>
-            <td class="col-mvar">${row.mvarInvalid ? '!' : Number.isFinite(row.mvar) ? `${row.mvar >= 0 ? '+' : ''}${row.mvar.toFixed(1)}${row.terminalDirectionMismatch ? ' <span class="ranking-terminal-warning" title="Terminal MVar yönleri uyumsuz" aria-label="Terminal MVar yönleri uyumsuz">!</span>' : ''}` : '-'}</td>
+            <td class="col-mvar">${mvarCell}</td>
             <td class="col-pct"><span class="ranking-pct-cell${row.invalidPct ? ' is-invalid' : ''}" style="background:${pctColor};color:${pctTextColor}">${pctText}</span></td>
             <td class="col-hist"><button type="button" class="btn-history" data-history-entity="${row.entityKey}" title="Son 24 saat grafiğini göster" aria-label="Son 24 saat grafiğini göster">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:auto;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
@@ -7538,9 +7609,10 @@ function _formatHistoryAxisLabel(timestampMs) {
     return Number.isFinite(Number(value)) ? `${Number(value) >= 0 ? '+' : ''}${Number(value).toFixed(1)} MVar` : '—';
   }
 
-  function buildReactiveTerminalTooltip(row, flow) {
+  function buildReactiveTerminalTooltip(row, flow, terminalArrow) {
+    const terminal = getHatReactiveTerminalPresentation(row, terminalArrow?.side || 'start');
     const reference = Number.isFinite(flow.reactiveReferenceMvar) ? `Reaktif Referans: %${Number(flow.displayPct).toFixed(1)} · ${flow.reactiveReferenceMvar.toFixed(0)} MVar` : 'Reaktif Referans: —';
-    return `<strong>${escapeHtml(row.name || '-')}</strong><br>${escapeHtml(row.startTm || '?')}: ${escapeHtml(formatReactiveTerminalValue(flow.qStart))}<br>${escapeHtml(row.endTm || '?')}: ${escapeHtml(formatReactiveTerminalValue(flow.qEnd))}<br><span class="tt-label">${escapeHtml(reference)}</span>`;
+    return `<strong>${escapeHtml(row.name || '-')}</strong><br><strong>${escapeHtml(terminal.name)}</strong><br>Q: ${escapeHtml(formatReactiveTerminalValue(terminal.qValue))}<br>Q zamanı: ${escapeHtml(formatReactiveMeasurementTimestamp(terminal.qTimestamp))}<br>U: ${escapeHtml(formatReactiveVoltageValue(terminal.uValue))}<br>U zamanı: ${escapeHtml(formatReactiveMeasurementTimestamp(terminal.uTimestamp))}<br><span class="tt-label">${escapeHtml(reference)}</span>`;
   }
 
   function appendReactiveTerminalArrow(fragment, row, flow, terminal) {
@@ -7565,7 +7637,7 @@ function _formatHistoryAxisLabel(timestampMs) {
     group.appendChild(arrow);
     group.style.cursor = 'pointer';
     group.style.pointerEvents = 'auto';
-    attachHoverTooltip(group, () => buildReactiveTerminalTooltip(row, flow), { owner: `hat-reactive:${terminalKey}` });
+    attachHoverTooltip(group, () => buildReactiveTerminalTooltip(row, flow, terminal), { owner: `hat-reactive:${terminalKey}` });
     group.addEventListener('click', (event) => {
       event.stopPropagation();
       openScadaHatDetails(row, { forceTiles: false });
@@ -8072,6 +8144,7 @@ function _formatHistoryAxisLabel(timestampMs) {
   globalThis.applyReactiveReferenceSettings = applyReactiveReferenceSettings;
   globalThis.getHatReactiveVoltageForTm = getHatReactiveVoltageForTm;
   globalThis.getHatReactiveVoltagesForTm = getHatReactiveVoltagesForTm;
+  globalThis.buildHatReactiveTooltipHtml = buildHatReactiveTooltipHtml;
   globalThis.buildEntityMetricVisual = buildEntityMetricVisual;
   globalThis.buildScadaAuditReport = buildScadaAuditReport;
   if (globalThis.__SCADA_V2_TEST_HOOKS__) {

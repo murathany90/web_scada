@@ -745,6 +745,8 @@
   function buildHatHoverTooltip(row) {
     const reactiveTooltip = globalThis.buildHatReactiveTooltipHtml?.(row);
     if (reactiveTooltip) return reactiveTooltip;
+    const activeTooltip = globalThis.buildHatActiveTooltipHtml?.(row);
+    if (activeTooltip) return activeTooltip;
     const record = getMetricRecord('hat', row.id);
     const lines = [
       `<strong>${escapeHtml(row.name || '-')} (${escapeHtml(formatHatLengthKm(row.lengthKm))} km)</strong>`
@@ -776,13 +778,17 @@
   }
 
   function buildTmHoverTooltip(tm) {
-    const voltageLines = getHatReactiveVoltageOverlays(tm).map((voltage) => {
-      const value = voltage?.record?.primaryValue;
-      if (!Number.isFinite(value)) return '';
-      const level = voltage?.voltageLevel ? `${voltage.voltageLevel} kV` : 'Gerilim';
-      return `<br><span class="tt-label">${escapeHtml(level)}: ${value.toFixed(1)} kV<br>Gerilim ölçüm zamanı: ${escapeHtml(formatReactiveVoltageTimestamp(voltage?.record?.primaryTimestamp))}</span>`;
-    }).filter(Boolean).join('');
-    return `<strong>${escapeHtml(tm.name || '-')} (${escapeHtml(tm.kvBucket || tm.kv || '?')})</strong>${voltageLines}`;
+    const level = tm.kvBucket || tm.kv || '?';
+    if (state.filters.scadaMetric !== 'hat-reactive') {
+      return `<strong>${escapeHtml(tm.name || '-')} (${escapeHtml(level)})</strong>`;
+    }
+    const voltage = getHatReactiveVoltageOverlay(tm);
+    const value = voltage?.record?.primaryValue;
+    const timestamp = typeof globalThis.formatHatTooltipTimestamp === 'function'
+      ? globalThis.formatHatTooltipTimestamp(voltage?.record?.primaryTimestamp, { includeSeconds: false })
+      : '';
+    const voltageText = Number.isFinite(value) ? `U ${value.toFixed(1)} kV${timestamp ? ` @${timestamp}` : ''}` : 'U —';
+    return `<strong>${escapeHtml(tm.name || '-')} · ${escapeHtml(level)} kV</strong><br><span class="tt-label">${escapeHtml(voltageText)}</span>`;
   }
 
   function buildTrafoHoverTooltip(entry) {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.19
+
+- Kablo karakteristik sınıflandırmasında aynı segmentin hem kablo hem havai olarak işaretlenmesini belirsiz kabul etti; bu durumda kablo uzunluğu/oranı tahmin edilmez.
+- Hat MW/MVar ve terminal-ok hover'larını ortak, kompakt Q/U/P zaman gösterimi ve en uzun üç karakteristik segmentiyle güncelledi; Hat (MVar) TM hover'ında staged gerilim yoksa `U —` görünür kalır.
+
 ## 0.6.18
 
 - Hat karakteristiklerindeki açık uzunluk segmentlerinden kablo oranını model indeksleme aşamasında hesapladı; kablo ağırlıklı hatları panel, hover ve detay başlıklarında (K) ile belirginleştirdi.

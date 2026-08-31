@@ -1328,16 +1328,20 @@ function formatHatHoverLength(lengthKm) {
   });
 }
 
-function formatHatCharacteristicForTooltip(characteristic) {
-  const normalized = String(characteristic || '').replace(/\s*\r?\n\s*/g, ' | ').replace(/\s+/g, ' ').trim();
-  return normalized || '—';
+function formatHatTooltipTimestamp(timestamp, { includeSeconds = true } = {}) {
+  if (!(timestamp instanceof Date) || Number.isNaN(timestamp.getTime())) return '';
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  const time = `${pad(timestamp.getHours())}:${pad(timestamp.getMinutes())}${includeSeconds ? `:${pad(timestamp.getSeconds())}` : ''}`;
+  const isToday = timestamp.getFullYear() === now.getFullYear()
+    && timestamp.getMonth() === now.getMonth()
+    && timestamp.getDate() === now.getDate();
+  return isToday ? time : `${pad(timestamp.getDate())}.${pad(timestamp.getMonth() + 1)} ${time}`;
 }
 
-function formatHatModelLengthKm(lengthKm) {
-  const numeric = Number(lengthKm);
-  return Number.isFinite(numeric)
-    ? numeric.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-    : '—';
+function formatHatTooltipMetric(value, unit) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? `${numeric >= 0 ? '+' : ''}${numeric.toFixed(1)} ${unit}` : '—';
 }
 
 function getHatCableBadgeTitle(hat) {
@@ -1362,15 +1366,14 @@ function getHatDisplayNameHtml(hat) {
 }
 
 function buildHatModelTooltipHtml(hat) {
-  const lines = [
-    `Karakteristik: ${escapeHtml(formatHatCharacteristicForTooltip(hat?.characteristic))}`,
-    `Uzunluk: ${escapeHtml(formatHatModelLengthKm(hat?.lengthKm))} km`
-  ];
-  const cableLengthKm = Number(hat?.cableLengthKm);
-  const cableRatio = Number(hat?.cableRatio);
-  if (Number.isFinite(cableLengthKm) && Number.isFinite(cableRatio)) {
-    lines.push(`Kablo: %${(cableRatio * 100).toFixed(1)} / ${escapeHtml(formatHatModelLengthKm(cableLengthKm))} km`);
-  }
+  const model = globalThis.WebSCADAHatCable?.summarizeCharacteristic?.(hat, 3) || {
+    segments: [],
+    moreCount: 0,
+    summary: `${Number.isFinite(Number(hat?.lengthKm)) ? `${Math.round(Number(hat.lengthKm))} km` : '— km'} · Kablo —`
+  };
+  const lines = model.segments.map((segment) => escapeHtml(segment));
+  if (model.moreCount && lines.length) lines[lines.length - 1] += ` · +${model.moreCount} kesit daha`;
+  lines.push(escapeHtml(model.summary));
   return lines.join('<br>');
 }
 
@@ -1378,6 +1381,8 @@ globalThis.getHatDisplayNameText = getHatDisplayNameText;
 globalThis.getHatDisplayNameHtml = getHatDisplayNameHtml;
 globalThis.getHatCableBadgeHtml = getHatCableBadgeHtml;
 globalThis.buildHatModelTooltipHtml = buildHatModelTooltipHtml;
+globalThis.formatHatTooltipTimestamp = formatHatTooltipTimestamp;
+globalThis.formatHatTooltipMetric = formatHatTooltipMetric;
 
 function buildHatHoverDirection(startTm, endTm, directionValue) {
   if (!Number.isFinite(directionValue)) return `${startTm || '?'} >> ${endTm || '?'}`;
@@ -1394,9 +1399,11 @@ function buildHatHoverMetricLine(row, metricRecord, unit, pctText) {
 function buildHatHoverTooltipHtml(row) {
   const reactiveTooltip = globalThis.buildHatReactiveTooltipHtml?.(row);
   if (reactiveTooltip) return reactiveTooltip;
+  const activeTooltip = globalThis.buildHatActiveTooltipHtml?.(row);
+  if (activeTooltip) return activeTooltip;
   const record = state.scada?.entityMetricsByKey?.get(`hat:${row.id}`) || null;
   const lines = [
-    `<strong>${getHatDisplayNameHtml(row)} (${escapeHtml(formatHatHoverLength(row.lengthKm))} km)</strong>`
+    `<strong>${getHatDisplayNameHtml(row)}</strong>`
   ];
   if (record?.active && Number.isFinite(record.active.value)) {
     const mwPct = record.active.valueInvalid
@@ -1419,18 +1426,6 @@ function buildHatHoverTooltipHtml(row) {
   }
   if (lines.length === 1) {
     lines.push(`<span class="tt-label">${escapeHtml(`${row.startTm || '?'} >> ${row.endTm || '?'}`)}</span>`);
-  }
-  if (record && Number.isFinite(record.directionValue)) {
-    const resolutionLabel = record.resolvedTerminalMismatch
-      ? 'Terminal yorumlu'
-      : record.unresolved || record.sourceAmbiguous || record.candidateConflict || record.backupUsed
-        ? 'Yön belirsiz'
-        : record.invalidPct || record.valueInvalid
-          ? 'Uyarili'
-          : 'Cozulmus';
-    const terminalLabel = record.terminalSide || '-';
-    const modelLabel = record.directionResolvedBy || record.directionModel || '-';
-    lines.push(`<span class="tt-label">Model: ${escapeHtml(modelLabel)} · Terminal: ${escapeHtml(terminalLabel)} · Guven: ${escapeHtml(resolutionLabel)}</span>`);
   }
   lines.push(buildHatModelTooltipHtml(row));
   return lines.join('<br>');
@@ -1606,7 +1601,7 @@ function renderHatLayer() {
     const safeStartTm = escapeHtml(row.startTm || '?');
     const safeEndTm = escapeHtml(row.endTm || '?');
     const safeKv = escapeHtml(row.kv || '?');
-    let tooltipHtml = `<strong>${safeName}</strong><br><span class="tt-label">${safeStartTm} ➔ ${safeEndTm}</span> · ${safeKv} kV · ${formatNumber(row.lengthKm, ' km')}`;
+    let tooltipHtml = `<strong>${safeName}</strong><br><span class="tt-label">${safeStartTm} ➔ ${safeEndTm}</span> · ${safeKv} kV`;
     if (flow) {
       const primaryValue = Number.isFinite(flow.primaryValue) ? flow.primaryValue : flow.mw;
       const primaryUnit = flow.primaryUnit || 'MW';
@@ -1632,7 +1627,7 @@ function renderHatLayer() {
       if (record.uncertaintyTooltip) tooltipHtml += `<br><span class="tt-label">${escapeHtml(record.uncertaintyTooltip)}</span>`;
     }
     tooltipHtml += `<br>${buildHatModelTooltipHtml(row)}`;
-    attachHoverTooltip(path, () => globalThis.buildHatReactiveTooltipHtml?.(row) || tooltipHtml, { owner: `hat:${row.id}` });
+    attachHoverTooltip(path, () => globalThis.buildHatReactiveTooltipHtml?.(row) || globalThis.buildHatActiveTooltipHtml?.(row) || tooltipHtml, { owner: `hat:${row.id}` });
     attachHoverTooltip(hitPath, () => buildHatHoverTooltipHtml(row), { owner: `hat:${row.id}` });
     fragment.appendChild(path);
     fragment.appendChild(hitPath);

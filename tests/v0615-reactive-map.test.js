@@ -62,8 +62,9 @@ test('line reactive terminals retain their own normalized direction and independ
   assert.match(runtime, /data-terminal-arrow/);
   assert.match(runtime, /data-terminal-key/);
   assert.match(runtime, /function buildHatReactiveTooltipHtml/);
-  assert.match(runtime, /Q zamanı:/);
-  assert.match(runtime, /U zamanı:/);
+  assert.match(runtime, /function buildHatReactiveTerminalTooltipLine/);
+  assert.match(runtime, /Q \$\{formatHatTooltipValue\(terminal\.qValue, 'MVar'\)\}/);
+  assert.match(runtime, /U —/);
   assert.match(runtime, /buildReactiveTerminalTooltip\(row, flow, terminal\)/);
   assert.match(runtime, /formatRoundedReactiveMvar/);
   assert.match(runtime, /ranking-mvar-cell/);
@@ -101,6 +102,7 @@ test('staged voltage result is deterministic per TM and voltage level and update
   assert.match(runtime, /refreshOpenHatReactiveDetails\(\)/);
   assert.match(overlay, /getHatReactiveVoltageOverlay/);
   assert.match(overlay, /isHatReactiveOverlay/);
-  assert.match(overlay, /Gerilim ölçüm zamanı/);
+  assert.match(overlay, /const voltageText = Number\.isFinite\(value\)/);
+  assert.match(overlay, /U —/);
   assert.doesNotMatch(overlay, /appendPillLabelCentered\(group, point\.x, point\.y - 17/);
 });
